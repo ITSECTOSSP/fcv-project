@@ -1,0 +1,64 @@
+# =========================================================
+# ENVIRONMENT / SECRETS
+# =========================================================
+
+.env
+.env.*
+!.env.example
+
+/auth-fcv/.env
+/blog-fcv/.env
+/frontend/.env
+
+
+# =========================================================
+# AUTH SERVICE
+# =========================================================
+
+/auth-fcv/vendor/
+/auth-fcv/node_modules/
+
+/auth-fcv/storage/logs/*
+/auth-fcv/storage/framework/cache/*
+/auth-fcv/storage/framework/sessions/*
+/auth-fcv/storage/framework/views/*
+/auth-fcv/storage/*.key
+
+
+# =========================================================
+# BLOG SERVICE
+# =========================================================
+
+/blog-fcv/vendor/
+/blog-fcv/node_modules/
+
+/blog-fcv/storage/logs/*
+/blog-fcv/storage/framework/cache/*
+/blog-fcv/storage/framework/sessions/*
+/blog-fcv/storage/framework/views/*
+/blog-fcv/storage/*.key
+
+
+# =========================================================
+# FRONTEND
+# =========================================================
+
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+
+
+# =========================================================
+# DOCKER
+# =========================================================
+
+docker-compose.yml
+docker-compose.override.yml
+
+
+# =========================================================
+# GENERAL
+# =========================================================
+
+*.log
+.phpunit.result.cache

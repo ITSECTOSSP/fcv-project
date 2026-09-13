@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* =========================================================
+   FCV THEME VARIABLES
+   ========================================================= */
+
+:root {
+    /* Backgrounds */
+    --bg: #f8f8f8;
+    --surface: #ffffff;
+    --surface-soft: #fffdf7;
+
+    /* Text */
+    --text: #525252;
+    --text-h: #171717;
+    --text-muted: #737373;
+
+    /* Borders */
+    --border: #e5e5e5;
+
+    /* FCV GOLD */
+    --accent: #c9a227;
+    --accent-hover: #b8921f;
+    --accent-bg: rgba(201, 162, 39, 0.10);
+    --accent-border: rgba(201, 162, 39, 0.30);
+
+    /* Shadows */
+    --shadow: rgba(0, 0, 0, 0.08);
+}
+
+/* =========================================================
+   DARK MODE
+   ========================================================= */
+
+html[data-mantine-color-scheme="dark"] {
+    /* Backgrounds */
+    --bg: #111111;
+    --surface: #181818;
+    --surface-soft: #1c1a14;
+
+    /* Text */
+    --text: #b8b8b8;
+    --text-h: #f5f5f5;
+    --text-muted: #929292;
+
+    /* Borders */
+    --border: #2d2d2d;
+
+    /* FCV GOLD */
+    --accent: #d4af37;
+    --accent-hover: #e0bd4d;
+    --accent-bg: rgba(212, 175, 55, 0.12);
+    --accent-border: rgba(212, 175, 55, 0.32);
+
+    /* Shadows */
+    --shadow: rgba(0, 0, 0, 0.35);
+}
+
+/* =========================================================
+   GLOBAL
+   ========================================================= */
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+html {
+    background: var(--bg);
+    transition: background-color 200ms ease;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+
+    transition:
+        background-color 200ms ease,
+        color 200ms ease;
+}
+
+/* =========================================================
+   GLOBAL BORDER COLOR
+   ========================================================= */
+
+* {
+    border-color: var(--border);
+}
+
