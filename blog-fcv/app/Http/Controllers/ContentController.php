@@ -359,26 +359,76 @@ class ContentController extends Controller
 
             'category_ids.*' => [
                 'integer',
-                Rule::exists('categories', 'id')
+                Rule::exists('content_categories', 'id')
                     ->where('is_active', true),
+            ],
+
+            // Media removal flags
+            'remove_featured_media' => [
+                'sometimes',
+                'boolean',
+            ],
+
+            'remove_banner_media' => [
+                'sometimes',
+                'boolean',
+            ],
+
+            // Media uploads
+            'featured_media' => [
+                'sometimes',
+                'nullable',
+                'image',
+                'mimes:jpeg,jpg,png,webp',
+                'max:5120',
+            ],
+
+            'banner_media' => [
+                'sometimes',
+                'nullable',
+                'image',
+                'mimes:jpeg,jpg,png,webp',
+                'max:10240',
+            ],
+
+            'attachments' => [
+                'sometimes',
+                'array',
+            ],
+
+            'attachments.*' => [
+                'file',
+                'max:20480',
             ],
         ]);
 
         DB::transaction(function () use (
             $validated,
-            $content
+            $content,
+            $request
         ) {
+
+            /*
+        |--------------------------------------------------------------------------
+        | Generate slug
+        |--------------------------------------------------------------------------
+        */
 
             if (
                 isset($validated['title']) &&
                 !isset($validated['slug'])
             ) {
-
                 $validated['slug'] = $this->generateUniqueSlug(
                     $validated['title'],
                     $content->id
                 );
             }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Resolve published date
+        |--------------------------------------------------------------------------
+        */
 
             if (isset($validated['status'])) {
                 $status = ContentStatus::from(
@@ -392,14 +442,155 @@ class ContentController extends Controller
                     );
             }
 
+            /*
+        |--------------------------------------------------------------------------
+        | Categories
+        |--------------------------------------------------------------------------
+        */
+
             $categoryIds = $validated['category_ids'] ?? null;
 
-            unset($validated['category_ids']);
+            /*
+        |--------------------------------------------------------------------------
+        | Media flags
+        |--------------------------------------------------------------------------
+        */
+
+            $removeFeaturedMedia =
+                $validated['remove_featured_media'] ?? false;
+
+            $removeBannerMedia =
+                $validated['remove_banner_media'] ?? false;
+
+            /*
+        |--------------------------------------------------------------------------
+        | Remove non-content fields before updating contents table
+        |--------------------------------------------------------------------------
+        */
+
+            unset(
+                $validated['category_ids'],
+                $validated['remove_featured_media'],
+                $validated['remove_banner_media'],
+                $validated['featured_media'],
+                $validated['banner_media'],
+                $validated['attachments'],
+            );
+
+            /*
+        |--------------------------------------------------------------------------
+        | Update content
+        |--------------------------------------------------------------------------
+        */
 
             $content->update($validated);
 
+            /*
+        |--------------------------------------------------------------------------
+        | Update categories
+        |--------------------------------------------------------------------------
+        */
+
             if ($categoryIds !== null) {
                 $content->categories()->sync($categoryIds);
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Remove Featured Media
+        |--------------------------------------------------------------------------
+        */
+
+            if ($removeFeaturedMedia) {
+                $content->media()
+                    ->wherePivot('type', 'featured')
+                    ->detach();
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Remove Banner Media
+        |--------------------------------------------------------------------------
+        */
+
+            if ($removeBannerMedia) {
+                $content->media()
+                    ->wherePivot('type', 'banner')
+                    ->detach();
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Replace Featured Media
+        |--------------------------------------------------------------------------
+        */
+
+            if ($request->hasFile('featured_media')) {
+
+                // Remove existing featured relationship
+                $content->media()
+                    ->wherePivot('type', 'featured')
+                    ->detach();
+
+                $file = $request->file('featured_media');
+
+                $path = $file->store(
+                    "contents/{$content->id}/featured",
+                    'public'
+                );
+
+                $media = ContentMedia::create([
+                    'name' => pathinfo(
+                        $file->getClientOriginalName(),
+                        PATHINFO_FILENAME
+                    ),
+                    'file_name' => $file->getClientOriginalName(),
+                    'path' => $path,
+                    'disk' => 'public',
+                    'mime_type' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                ]);
+
+                $content->media()->attach($media->id, [
+                    'type' => 'featured',
+                ]);
+            }
+
+            /*
+        |--------------------------------------------------------------------------
+        | Replace Banner Media
+        |--------------------------------------------------------------------------
+        */
+
+            if ($request->hasFile('banner_media')) {
+
+                // Remove existing banner relationship
+                $content->media()
+                    ->wherePivot('type', 'banner')
+                    ->detach();
+
+                $file = $request->file('banner_media');
+
+                $path = $file->store(
+                    "contents/{$content->id}/banner",
+                    'public'
+                );
+
+                $media = ContentMedia::create([
+                    'name' => pathinfo(
+                        $file->getClientOriginalName(),
+                        PATHINFO_FILENAME
+                    ),
+                    'file_name' => $file->getClientOriginalName(),
+                    'path' => $path,
+                    'disk' => 'public',
+                    'mime_type' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                ]);
+
+                $content->media()->attach($media->id, [
+                    'type' => 'banner',
+                ]);
             }
         });
 

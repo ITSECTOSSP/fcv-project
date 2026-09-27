@@ -9,6 +9,7 @@ import {
   Pagination,
   Select,
   Stack,
+  Skeleton,
   Table,
   Text,
   TextInput,
@@ -18,8 +19,11 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   Archive,
+  ArrowRight,
+  CheckCircle,
   Edit,
   Eye,
+  FileText,
   MoreVertical,
   Plus,
   RefreshCw,
@@ -34,7 +38,7 @@ import { useNavigate } from "react-router-dom";
 import { useContents } from "@/lib/hook/blog-fcv/contents";
 import { useContentTypes } from "@/lib/hook/blog-fcv/content-types";
 
-import type { ContentStatus } from "@/lib/api/blog-fcv/contents";
+import type { ContentStatus } from "@/types/blog-fcv/content";
 
 const PER_PAGE = 15;
 
@@ -97,6 +101,66 @@ function formatDate(date: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(parsedDate);
+}
+
+function ContentTableSkeletonRow() {
+  return (
+    <Table.Tr>
+      {/* Content */}
+      <Table.Td>
+        <Group gap="sm" align="flex-start" wrap="nowrap">
+          <Skeleton width={40} height={40} radius="sm" />
+
+          <Stack gap={5} style={{ flex: 1 }}>
+            <Group gap="xs">
+              <Skeleton height={14} width="55%" radius="sm" />
+
+              <Skeleton height={18} width={58} radius="sm" />
+            </Group>
+
+            <Skeleton height={11} width="65%" radius="sm" />
+
+            <Skeleton height={10} width={80} radius="sm" />
+          </Stack>
+        </Group>
+      </Table.Td>
+
+      {/* Content Type */}
+      <Table.Td>
+        <Skeleton height={24} width={90} radius="sm" />
+      </Table.Td>
+
+      {/* Categories */}
+      <Table.Td>
+        <Group gap={5}>
+          <Skeleton height={21} width={70} radius="sm" />
+
+          <Skeleton height={21} width={85} radius="sm" />
+        </Group>
+      </Table.Td>
+
+      {/* Status */}
+      <Table.Td>
+        <Skeleton height={24} width={70} radius="sm" />
+      </Table.Td>
+
+      {/* Updated */}
+      <Table.Td>
+        <Stack gap={5}>
+          <Skeleton height={13} width={100} radius="sm" />
+
+          <Skeleton height={10} width={125} radius="sm" />
+        </Stack>
+      </Table.Td>
+
+      {/* Actions */}
+      <Table.Td>
+        <Group justify="flex-end">
+          <Skeleton height={28} width={28} radius="sm" />
+        </Group>
+      </Table.Td>
+    </Table.Tr>
+  );
 }
 
 export default function ContentsPage() {
@@ -549,67 +613,106 @@ export default function ContentsPage() {
       )}
 
       {/* =====================================================
-          CONTENT TABLE
-          ===================================================== */}
-
+    CONTENT TABLE
+    ===================================================== */}
       <Card
         withBorder
-        radius="md"
+        radius="lg"
         padding={0}
         style={{
           overflow: "hidden",
         }}
       >
-        <Table.ScrollContainer minWidth={1100}>
-          <Table highlightOnHover verticalSpacing="md">
+        <Table.ScrollContainer minWidth={1050}>
+          <Table
+            highlightOnHover
+            verticalSpacing="md"
+            horizontalSpacing="lg"
+            striped={false}
+          >
             <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Content</Table.Th>
+              <Table.Tr
+                style={{
+                  backgroundColor: "var(--mantine-color-gray-0)",
+                }}
+              >
+                <Table.Th w={390}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Content
+                  </Text>
+                </Table.Th>
 
-                <Table.Th>Type</Table.Th>
+                <Table.Th w={150}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Type
+                  </Text>
+                </Table.Th>
 
-                <Table.Th>Categories</Table.Th>
+                <Table.Th w={250}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Categories
+                  </Text>
+                </Table.Th>
 
-                <Table.Th>Status</Table.Th>
+                <Table.Th w={130}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Status
+                  </Text>
+                </Table.Th>
 
-                <Table.Th>Published</Table.Th>
+                <Table.Th w={150}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Updated
+                  </Text>
+                </Table.Th>
 
-                <Table.Th>Updated</Table.Th>
-
-                <Table.Th ta="right" w={70}>
-                  Actions
+                <Table.Th ta="right" w={60}>
+                  <Text size="xs" fw={600} tt="uppercase" c="dimmed">
+                    Actions
+                  </Text>
                 </Table.Th>
               </Table.Tr>
             </Table.Thead>
 
             <Table.Tbody>
               {loading ? (
-                <Table.Tr>
-                  <Table.Td colSpan={7}>
-                    <Box py={60}>
-                      <Stack align="center" gap="xs">
-                        <RefreshCw size={28} className="animate-spin" />
-
-                        <Text size="sm" c="dimmed">
-                          Loading contents...
-                        </Text>
-                      </Stack>
-                    </Box>
-                  </Table.Td>
-                </Table.Tr>
+                <>
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <ContentTableSkeletonRow
+                      key={`content-skeleton-${index}`}
+                    />
+                  ))}
+                </>
               ) : contents.length === 0 ? (
                 <Table.Tr>
-                  <Table.Td colSpan={7}>
-                    <Box py={60}>
+                  <Table.Td colSpan={6}>
+                    <Box py={70}>
                       <Stack align="center" gap="xs">
-                        <Search size={34} opacity={0.4} />
+                        <Box
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 56,
+                            height: 56,
+                            borderRadius: 14,
+                            backgroundColor: "var(--mantine-color-gray-1)",
+                          }}
+                        >
+                          <Search
+                            size={26}
+                            color="var(--mantine-color-gray-6)"
+                          />
+                        </Box>
 
-                        <Text fw={600}>No contents found</Text>
+                        <Text fw={600} mt={4}>
+                          No contents found
+                        </Text>
 
-                        <Text size="sm" c="dimmed" ta="center">
+                        <Text size="sm" c="dimmed" ta="center" maw={400}>
                           {search || status !== "all" || contentTypeId !== "all"
-                            ? "Try changing your filters."
-                            : "Create your first content to get started."}
+                            ? "No content matches your current filters. Try adjusting your search or filters."
+                            : "There are no content records yet. Create your first publication to get started."}
                         </Text>
 
                         {!search &&
@@ -630,84 +733,188 @@ export default function ContentsPage() {
                 </Table.Tr>
               ) : (
                 contents.map((content) => (
-                  <Table.Tr key={content.id}>
-                    {/* CONTENT */}
+                  <Table.Tr
+                    key={content.id}
+                    style={{
+                      cursor: "pointer",
+                    }}
+                    onClick={() => navigate(`/blog/edit-content/${content.id}`)}
+                  >
+                    {/* =================================================
+                  CONTENT
+                  ================================================= */}
                     <Table.Td>
-                      <Stack gap={3}>
-                        <Group gap="xs" wrap="nowrap">
-                          {content.is_featured && (
-                            <Tooltip label="Featured content">
-                              <Star size={15} fill="currentColor" />
-                            </Tooltip>
+                      <Group gap="sm" align="flex-start" wrap="nowrap">
+                        {/* Content Icon */}
+                        <Box
+                          style={{
+                            flexShrink: 0,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 9,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: content.is_featured
+                              ? "var(--mantine-color-yellow-1)"
+                              : "var(--mantine-color-gray-1)",
+                          }}
+                        >
+                          {content.is_featured ? (
+                            <Star
+                              size={17}
+                              fill="currentColor"
+                              color="var(--mantine-color-yellow-7)"
+                            />
+                          ) : (
+                            <FileText
+                              size={17}
+                              color="var(--mantine-color-gray-6)"
+                            />
                           )}
+                        </Box>
 
-                          <Text fw={600} lineClamp={1} maw={350}>
-                            {content.title}
+                        <Stack gap={3} style={{ minWidth: 0 }}>
+                          <Group gap={6} wrap="nowrap">
+                            <Text fw={600} size="sm" lineClamp={1} maw={310}>
+                              {content.title}
+                            </Text>
+
+                            {content.is_featured && (
+                              <Badge
+                                size="xs"
+                                variant="light"
+                                color="yellow"
+                                radius="sm"
+                              >
+                                Featured
+                              </Badge>
+                            )}
+                          </Group>
+
+                          <Text size="xs" c="dimmed" lineClamp={1} maw={330}>
+                            /{content.slug}
                           </Text>
-                        </Group>
 
-                        <Text size="xs" c="dimmed" lineClamp={1} maw={350}>
-                          /{content.slug}
-                        </Text>
-                      </Stack>
-                    </Table.Td>
-
-                    {/* CONTENT TYPE */}
-                    <Table.Td>
-                      <Text size="sm">{content.content_type?.name ?? "—"}</Text>
-                    </Table.Td>
-
-                    {/* CATEGORIES */}
-                    <Table.Td>
-                      <Group gap={4} wrap="wrap" maw={280}>
-                        {content.categories?.slice(0, 3).map((category) => (
-                          <Badge key={category.id} variant="light" size="sm">
-                            {category.name}
-                          </Badge>
-                        ))}
-
-                        {(content.categories?.length ?? 0) > 3 && (
-                          <Badge size="sm" variant="outline">
-                            +{(content.categories?.length ?? 0) - 3}
-                          </Badge>
-                        )}
-
-                        {!content.categories?.length && (
-                          <Text size="sm" c="dimmed">
-                            —
+                          <Text size="xs" c="dimmed">
+                            ID #{content.id}
                           </Text>
-                        )}
+                        </Stack>
                       </Group>
                     </Table.Td>
 
-                    {/* STATUS */}
+                    {/* =================================================
+                  CONTENT TYPE
+                  ================================================= */}
+                    <Table.Td>
+                      <Badge variant="light" color="gray" radius="sm" size="sm">
+                        {content.content_type?.name ?? "—"}
+                      </Badge>
+                    </Table.Td>
+
+                    {/* =================================================
+                  CATEGORIES
+                  ================================================= */}
+                    <Table.Td>
+                      {content.categories && content.categories.length > 0 ? (
+                        <Group gap={5} wrap="wrap" maw={250}>
+                          {content.categories.slice(0, 2).map((category) => (
+                            <Badge
+                              key={category.id}
+                              variant="outline"
+                              color="gray"
+                              size="xs"
+                              radius="sm"
+                            >
+                              {category.name}
+                            </Badge>
+                          ))}
+
+                          {content.categories.length > 2 && (
+                            <Tooltip
+                              label={content.categories
+                                .slice(2)
+                                .map((category) => category.name)
+                                .join(", ")}
+                              withArrow
+                            >
+                              <Badge
+                                variant="light"
+                                color="gray"
+                                size="xs"
+                                radius="sm"
+                              >
+                                +{content.categories.length - 2}
+                              </Badge>
+                            </Tooltip>
+                          )}
+                        </Group>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          No categories
+                        </Text>
+                      )}
+                    </Table.Td>
+
+                    {/* =================================================
+                  STATUS
+                  ================================================= */}
                     <Table.Td>
                       <Badge
                         color={getStatusColor(content.status)}
                         variant="light"
+                        radius="sm"
+                        size="sm"
                       >
                         {formatStatus(content.status)}
                       </Badge>
                     </Table.Td>
 
-                    {/* PUBLISHED */}
+                    {/* =================================================
+                  UPDATED
+                  ================================================= */}
                     <Table.Td>
-                      <Text size="sm">{formatDate(content.published_at)}</Text>
+                      <Stack gap={2}>
+                        <Text size="sm" fw={500}>
+                          {formatDate(content.updated_at)}
+                        </Text>
+
+                        {content.published_at ? (
+                          <Group gap={4}>
+                            <CheckCircle
+                              size={12}
+                              color="var(--mantine-color-green-6)"
+                            />
+
+                            <Text size="xs" c="dimmed">
+                              Published {formatDate(content.published_at)}
+                            </Text>
+                          </Group>
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Not published
+                          </Text>
+                        )}
+                      </Stack>
                     </Table.Td>
 
-                    {/* UPDATED */}
-                    <Table.Td>
-                      <Text size="sm">{formatDate(content.updated_at)}</Text>
-                    </Table.Td>
-
-                    {/* ACTIONS */}
-                    <Table.Td>
-                      <Menu shadow="md" width={190} position="bottom-end">
+                    {/* =================================================
+                  ACTIONS
+                  ================================================= */}
+                    <Table.Td onClick={(event) => event.stopPropagation()}>
+                      <Menu
+                        shadow="md"
+                        width={190}
+                        position="bottom-end"
+                        withArrow
+                      >
                         <Menu.Target>
                           <ActionIcon
                             variant="subtle"
                             color="gray"
+                            size="md"
                             disabled={actionLoading}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <MoreVertical size={18} />
                           </ActionIcon>
@@ -721,17 +928,17 @@ export default function ContentsPage() {
                               navigate(`/blog/contents/${content.id}`)
                             }
                           >
-                            View
+                            View Content
                           </Menu.Item>
 
                           {/* EDIT */}
                           <Menu.Item
                             leftSection={<Edit size={15} />}
                             onClick={() =>
-                              navigate(`/blog/contents/${content.id}/edit`)
+                              navigate(`/blog/edit-content/${content.id}`)
                             }
                           >
-                            Edit
+                            Edit Content
                           </Menu.Item>
 
                           <Menu.Divider />
@@ -792,23 +999,28 @@ export default function ContentsPage() {
           </Table>
         </Table.ScrollContainer>
 
-        {/* ===================================================
-            PAGINATION
-            =================================================== */}
-
+        {/* =====================================================
+      PAGINATION
+      ===================================================== */}
         {!loading && pagination.lastPage > 1 && (
           <Group
-            justify="center"
+            justify="space-between"
+            px="lg"
             py="md"
             style={{
               borderTop: "1px solid var(--mantine-color-gray-2)",
             }}
           >
+            <Text size="xs" c="dimmed">
+              Page {pagination.currentPage} of {pagination.lastPage}
+            </Text>
+
             <Pagination
               value={pagination.currentPage}
               onChange={setPage}
               total={pagination.lastPage}
               disabled={actionLoading}
+              size="sm"
             />
           </Group>
         )}

@@ -1,103 +1,92 @@
 import api from "../api";
 
-export interface Media {
-    id: number;
-    name: string;
-    file_name: string;
-    path: string;
-    disk: string;
-    mime_type: string | null;
-    size: number | null;
-    alt_text: string | null;
-    caption: string | null;
-    created_at: string;
-    updated_at: string;
-}
+import type {
+  ContentMedia,
+} from "@/types/blog-fcv/content";
 
 export interface MediaResponse {
-    data: Media;
-    message?: string;
+  data: ContentMedia;
+  message?: string;
 }
 
 export interface MediaListResponse {
-    data: Media[];
-    current_page?: number;
-    last_page?: number;
-    per_page?: number;
-    total?: number;
+  data: ContentMedia[];
+  current_page?: number;
+  last_page?: number;
+  per_page?: number;
+  total?: number;
 }
 
 export interface MediaUploadPayload {
-    file: File;
-    name?: string;
-    alt_text?: string;
-    caption?: string;
-    disk?: string;
+  file: File;
+  name?: string;
+  alt_text?: string;
+  caption?: string;
+  disk?: string;
 }
 
 export const mediaApi = {
-    getAll: async (params?: Record<string, unknown>) => {
-        const response =
-            await api.get<MediaListResponse>(
-                "/api/blog/media",
-                {
-                    params,
-                }
-            );
+  getAll: async (params?: Record<string, unknown>) => {
+    const response = await api.get<MediaListResponse>(
+      "/api/blog/media",
+      {
+        params,
+      },
+    );
 
-        return response.data;
-    },
+    return response.data;
+  },
 
-    getById: async (id: number) => {
-        const response =
-            await api.get<MediaResponse>(
-                `/api/blog/media/${id}`
-            );
+  getById: async (id: number) => {
+    const response = await api.get<MediaResponse>(
+      `/api/blog/media/${id}`,
+    );
 
-        return response.data;
-    },
+    return response.data;
+  },
 
-    upload: async (payload: MediaUploadPayload) => {
-        const formData = new FormData();
+  getUrl: (media: ContentMedia) => {
+    if (media.url) {
+      return media.url;
+    }
 
-        formData.append("file", payload.file);
+    return `${import.meta.env.VITE_API_URL}/api/blog/storage/${media.path}`;
+  },
 
-        if (payload.name) {
-            formData.append("name", payload.name);
-        }
+  upload: async (payload: MediaUploadPayload) => {
+    const formData = new FormData();
 
-        if (payload.alt_text) {
-            formData.append(
-                "alt_text",
-                payload.alt_text
-            );
-        }
+    formData.append("file", payload.file);
 
-        if (payload.caption) {
-            formData.append(
-                "caption",
-                payload.caption
-            );
-        }
+    if (payload.name) {
+      formData.append("name", payload.name);
+    }
 
-        if (payload.disk) {
-            formData.append("disk", payload.disk);
-        }
+    if (payload.alt_text) {
+      formData.append("alt_text", payload.alt_text);
+    }
 
-        const response =
-            await api.post<MediaResponse>(
-                "/api/blog/media",
-                formData
-            );
+    if (payload.caption) {
+      formData.append("caption", payload.caption);
+    }
 
-        return response.data;
-    },
+    if (payload.disk) {
+      formData.append("disk", payload.disk);
+    }
 
-    delete: async (id: number) => {
-        const response = await api.delete(
-            `/api/blog/media/${id}`
-        );
+    const response = await api.post<MediaResponse>(
+      "/api/blog/media",
+      formData,
+    );
 
-        return response.data;
-    },
+    return response.data;
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(
+      `/api/blog/media/${id}`,
+    );
+
+    return response.data;
+  },
 };

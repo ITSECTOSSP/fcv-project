@@ -51,11 +51,6 @@ const navigation = [
     to: "/records",
   },
   {
-    label: "Users",
-    icon: Users,
-    to: "/users",
-  },
-  {
     label: "Reports",
     icon: BarChart3,
     to: "/reports",
@@ -103,6 +98,11 @@ const blogNavigation = [
  */
 
 const systemNavigation = [
+    {
+    label: "Users",
+    icon: Users,
+    to: "/admin/users",
+  },
   {
     label: "Security",
     icon: ShieldCheck,

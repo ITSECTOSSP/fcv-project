@@ -8,7 +8,10 @@
 
 /auth-fcv/.env
 /blog-fcv/.env
+/inv-fcv/.env
+/hr-fcv/.env
 /frontend/.env
+
 
 
 # =========================================================
@@ -38,6 +41,31 @@
 /blog-fcv/storage/framework/views/*
 /blog-fcv/storage/*.key
 
+# =========================================================
+# INV SERVICE
+# =========================================================
+
+/inv-fcv/vendor/
+/inv-fcv/node_modules/
+
+/inv-fcv/storage/logs/*
+/inv-fcv/storage/framework/cache/*
+/inv-fcv/storage/framework/sessions/*
+/inv-fcv/storage/framework/views/*
+/inv-fcv/storage/*.key
+
+# =========================================================
+# HR SERVICE
+# =========================================================
+
+/hr-fcv/vendor/
+/hr-fcv/node_modules/
+
+/hr-fcv/storage/logs/*
+/hr-fcv/storage/framework/cache/*
+/hr-fcv/storage/framework/sessions/*
+/hr-fcv/storage/framework/views/*
+/hr-fcv/storage/*.key
 
 # =========================================================
 # FRONTEND

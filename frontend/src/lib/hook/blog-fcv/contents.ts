@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  contentsApi,
-  type Content,
-  type ContentFilters,
-  type ContentPayload,
-} from "@/lib/api/blog-fcv/contents";
+import { contentsApi } from "@/lib/api/blog-fcv/contents";
+
+import type {
+  Content,
+  ContentFilters,
+  ContentPayload,
+  ContentsResponse,
+  ContentResponse,
+} from "@/types/blog-fcv/content";
 
 export function useContents() {
   const [contents, setContents] = useState<Content[]>([]);
@@ -59,6 +62,22 @@ export function useContents() {
     }
   };
 
+  const getContent = useCallback(async (id: number) => {
+    try {
+      setError(null);
+
+      const response = await contentsApi.getById(id);
+
+      console.log("GET CONTENT API RESPONSE:", response);
+
+      return response;
+    } catch (err) {
+      console.error("Failed to fetch content:", err);
+      setError("Unable to load content.");
+      throw err;
+    }
+  }, []);
+
   const updateContent = async (
     id: number,
     payload: Partial<ContentPayload>,
@@ -67,7 +86,7 @@ export function useContents() {
 
     await fetchContents();
 
-    return response.data;
+    return response;
   };
 
   const deleteContent = async (id: number) => {
@@ -111,6 +130,7 @@ export function useContents() {
     pagination,
     fetchContents,
     createContent,
+    getContent,
     updateContent,
     deleteContent,
     publishContent,

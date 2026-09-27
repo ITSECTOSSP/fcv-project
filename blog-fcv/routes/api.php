@@ -5,6 +5,7 @@ use App\Http\Controllers\ContentController;
 use App\Http\Controllers\ContentTypeController;
 use App\Http\Controllers\ContentMediaController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,7 +21,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::apiResource('content-types', ContentTypeController::class);
 
-
 /*
 |--------------------------------------------------------------------------
 | Categories
@@ -28,7 +28,6 @@ Route::apiResource('content-types', ContentTypeController::class);
 */
 
 Route::apiResource('categories', ContentCategoryController::class);
-
 
 /*
 |--------------------------------------------------------------------------
@@ -53,7 +52,6 @@ Route::post(
     [ContentController::class, 'restore']
 );
 
-
 /*
 |--------------------------------------------------------------------------
 | Media
@@ -67,3 +65,21 @@ Route::apiResource('media', ContentMediaController::class)
         'show',
         'destroy',
     ]);
+
+/*
+|--------------------------------------------------------------------------
+| Media Storage
+|--------------------------------------------------------------------------
+*/
+
+Route::get('storage/{path}', function (string $path) {
+    $disk = Storage::disk('public');
+
+    if (! $disk->exists($path)) {
+        abort(404);
+    }
+
+    return response()->file(
+        $disk->path($path)
+    );
+})->where('path', '.*');

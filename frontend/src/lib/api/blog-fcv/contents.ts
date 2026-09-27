@@ -1,82 +1,12 @@
 import api from "../api";
 
-export type ContentStatus = "draft" | "pending" | "published" | "archived";
-
-export interface Content {
-  id: number;
-  content_type_id: number;
-  author_id: number | null;
-
-  title: string;
-  slug: string;
-  excerpt: string | null;
-  content: string | null;
-
-  status: ContentStatus;
-  is_featured: boolean;
-  published_at: string | null;
-
-  content_type?: {
-    id: number;
-    name: string;
-    slug: string;
-  };
-
-  categories?: {
-    id: number;
-    name: string;
-    slug: string;
-  }[];
-
-  media?: {
-    id: number;
-    name: string;
-    file_name: string;
-    path: string;
-    mime_type: string | null;
-  }[];
-
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ContentsResponse {
-  data: Content[];
-  current_page?: number;
-  last_page?: number;
-  per_page?: number;
-  total?: number;
-}
-
-export interface ContentResponse {
-  data: Content;
-  message?: string;
-}
-
-export interface ContentPayload {
-  content_type_id: number;
-  title: string;
-  slug?: string | null;
-  excerpt?: string | null;
-  content?: string | null;
-  status?: ContentStatus;
-  is_featured?: boolean;
-  published_at?: string | null;
-  category_ids?: number[];
-
-  featured_media?: File | null;
-  banner_media?: File | null;
-  attachments?: File[];
-}
-
-export interface ContentFilters {
-  search?: string;
-  content_type_id?: number;
-  status?: ContentStatus;
-  is_featured?: boolean;
-  page?: number;
-  per_page?: number;
-}
+import type {
+  Content,
+  ContentFilters,
+  ContentPayload,
+  ContentsResponse,
+  ContentResponse,
+} from "@/types/blog-fcv/content";
 
 export const contentsApi = {
   getAll: async (filters?: ContentFilters) => {
@@ -88,7 +18,7 @@ export const contentsApi = {
   },
 
   getById: async (id: number) => {
-    const response = await api.get<ContentResponse>(`/api/blog/contents/${id}`);
+    const response = await api.get<Content>(`/api/blog/contents/${id}`);
 
     return response.data;
   },
@@ -160,9 +90,82 @@ export const contentsApi = {
   },
 
   update: async (id: number, payload: Partial<ContentPayload>) => {
-    const response = await api.put<ContentResponse>(
+    const formData = new FormData();
+
+    if (payload.content_type_id !== undefined) {
+      formData.append("content_type_id", String(payload.content_type_id));
+    }
+
+    if (payload.title !== undefined) {
+      formData.append("title", payload.title);
+    }
+
+    if (payload.slug !== undefined) {
+      formData.append("slug", payload.slug ?? "");
+    }
+
+    if (payload.excerpt !== undefined) {
+      formData.append("excerpt", payload.excerpt ?? "");
+    }
+
+    if (payload.content !== undefined) {
+      formData.append("content", payload.content ?? "");
+    }
+
+    if (payload.status !== undefined) {
+      formData.append("status", payload.status);
+    }
+
+    if (payload.is_featured !== undefined) {
+      formData.append("is_featured", payload.is_featured ? "1" : "0");
+    }
+
+    if (payload.published_at !== undefined) {
+      formData.append("published_at", payload.published_at ?? "");
+    }
+
+    payload.category_ids?.forEach((id) => {
+      formData.append("category_ids[]", String(id));
+    });
+
+    if (payload.featured_media) {
+      formData.append("featured_media", payload.featured_media);
+    }
+
+    if (payload.banner_media) {
+      formData.append("banner_media", payload.banner_media);
+    }
+
+    payload.attachments?.forEach((file) => {
+      formData.append("attachments[]", file);
+    });
+
+    // Remove existing media
+    if (payload.remove_featured_media !== undefined) {
+      formData.append(
+        "remove_featured_media",
+        payload.remove_featured_media ? "1" : "0",
+      );
+    }
+
+    if (payload.remove_banner_media !== undefined) {
+      formData.append(
+        "remove_banner_media",
+        payload.remove_banner_media ? "1" : "0",
+      );
+    }
+
+    // Laravel handles multipart updates through POST + _method
+    formData.append("_method", "PUT");
+
+    // Temporary debugging
+    for (const [key, value] of formData.entries()) {
+      console.log("UPDATE FORMDATA:", key, value);
+    }
+
+    const response = await api.post<Content>(
       `/api/blog/contents/${id}`,
-      payload,
+      formData,
     );
 
     return response.data;

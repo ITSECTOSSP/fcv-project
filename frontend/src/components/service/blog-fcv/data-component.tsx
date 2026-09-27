@@ -17,7 +17,7 @@ import {
   Layers,
 } from "lucide-react";
 
-import type { Content } from "@/lib/api/blog-fcv/contents";
+import type { Content } from "@/types/blog-fcv/content";
 
 const GOLD = "#C9A227";
 
