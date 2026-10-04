@@ -1,7 +1,6 @@
 _format_version: "3.0"
 
 services:
-
   # ========================================
   # AUTH SERVICE
   # ========================================
@@ -38,7 +37,6 @@ services:
             - Content-Length
           credentials: false
           max_age: 3600
-
 
   # ========================================
   # BLOG SERVICE
@@ -77,13 +75,12 @@ services:
           credentials: false
           max_age: 3600
 
-
   # ========================================
   # INVENTORY SERVICE
   # ========================================
 
   - name: inventory-service
-    url: http://inv-nginx:80/api
+    url: http://inv-nginx:80
 
     routes:
       - name: inventory-api
@@ -91,7 +88,7 @@ services:
           - /api/inventory
         protocols:
           - http
-        strip_path: true
+        strip_path: false
 
     plugins:
       - name: cors
@@ -114,7 +111,6 @@ services:
             - Content-Length
           credentials: false
           max_age: 3600
-
 
   # ========================================
   # HUMAN RESOURCE SERVICE

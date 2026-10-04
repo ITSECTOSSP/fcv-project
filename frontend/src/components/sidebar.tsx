@@ -11,7 +11,6 @@ import {
 } from "@mantine/core";
 
 import {
-  BarChart3,
   ChevronUp,
   FileText,
   FolderKanban,
@@ -20,10 +19,14 @@ import {
   Layers,
   LogOut,
   Settings,
-  ShieldCheck,
+  Settings2,
   User,
   Users,
   X,
+  Boxes,
+  ClipboardList,
+  FileArchive,
+  Tags,
 } from "lucide-react";
 
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -40,21 +43,30 @@ const navigation = [
     icon: Home,
     to: "/dashboard",
   },
+];
+/*
+ * =========================================================
+ * BLOG NAVIGATION
+ * =========================================================
+ */
+
+const invNavigation = [
   {
-    label: "Document Tracking",
-    icon: FileText,
-    to: "/tracking",
+    label: "Inventory Dashboard",
+    icon: Home,
+    to: "/inventory/dashboard",
   },
   {
-    label: "Records",
-    icon: FolderKanban,
-    to: "/records",
+    label: "Manage Equipments",
+    icon: Boxes,
+    to: "/inventory/manage",
   },
   {
-    label: "Reports",
-    icon: BarChart3,
-    to: "/reports",
+    label: "Inventory Configuration",
+    icon: Settings2 ,
+    to: "/inventory/configutation",
   },
+
 ];
 
 /*
@@ -98,20 +110,10 @@ const blogNavigation = [
  */
 
 const systemNavigation = [
-    {
+  {
     label: "Users",
     icon: Users,
     to: "/admin/users",
-  },
-  {
-    label: "Security",
-    icon: ShieldCheck,
-    to: "/security",
-  },
-  {
-    label: "Settings",
-    icon: Settings,
-    to: "/settings",
   },
 ];
 
@@ -138,8 +140,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   const isActive = (path: string) => {
     return (
-      location.pathname === path ||
-      location.pathname.startsWith(`${path}/`)
+      location.pathname === path || location.pathname.startsWith(`${path}/`)
     );
   };
 
@@ -165,11 +166,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
    * =========================================================
    */
 
-  const username =
-    user.username ||
-    user.name ||
-    user.email ||
-    "User";
+  const username = user.username || user.name || user.email || "User";
 
   /*
    * =========================================================
@@ -177,9 +174,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
    * =========================================================
    */
 
-  const userInitial = username
-    .charAt(0)
-    .toUpperCase();
+  const userInitial = username.charAt(0).toUpperCase();
 
   /*
    * =========================================================
@@ -213,10 +208,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
    */
 
   const renderNavigation = (
-    items:
-      | typeof navigation
-      | typeof blogNavigation
-      | typeof systemNavigation
+    items: typeof navigation | typeof blogNavigation | typeof systemNavigation,
   ) => {
     return items.map((item) => {
       const Icon = item.icon;
@@ -239,27 +231,19 @@ export default function Sidebar({ onClose }: SidebarProps) {
           "
           styles={{
             root: {
-              color: active
-                ? "var(--accent)"
-                : "var(--text)",
+              color: active ? "var(--accent)" : "var(--text)",
 
-              backgroundColor: active
-                ? "var(--accent-bg)"
-                : "transparent",
+              backgroundColor: active ? "var(--accent-bg)" : "transparent",
 
               fontWeight: active ? 700 : 500,
             },
 
             section: {
-              color: active
-                ? "var(--accent)"
-                : "var(--text)",
+              color: active ? "var(--accent)" : "var(--text)",
             },
 
             label: {
-              color: active
-                ? "var(--accent)"
-                : "var(--text)",
+              color: active ? "var(--accent)" : "var(--text)",
             },
           }}
         />
@@ -303,10 +287,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
           {/* BRAND TEXT */}
 
-          <Stack
-            gap={1}
-            className="min-w-0 flex-1"
-          >
+          <Stack gap={1} className="min-w-0 flex-1">
             <Text
               fw={800}
               size="sm"
@@ -318,12 +299,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
               FCV
             </Text>
 
-            <Text
-              size="xs"
-              c="dimmed"
-              lh={1.2}
-              truncate
-            >
+            <Text size="xs" c="dimmed" lh={1.2} truncate>
               Forward • Commitment • Vision
             </Text>
           </Stack>
@@ -360,13 +336,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
           NAVIGATION
           ===================================================== */}
 
-      <ScrollArea
-        type="auto"
-        offsetScrollbars
-        className="flex-1"
-      >
+      <ScrollArea type="auto" offsetScrollbars className="flex-1">
         <Stack gap={4} px="sm" py="md">
-
           {/* =================================================
               MAIN
               ================================================= */}
@@ -384,6 +355,25 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </Text>
 
           {renderNavigation(navigation)}
+
+          {/* =================================================
+              INVENTORY
+              ================================================= */}
+
+          <Text
+            size="xs"
+            fw={700}
+            c="dimmed"
+            px="sm"
+            mt="lg"
+            mb={4}
+            tt="uppercase"
+            className="tracking-wider"
+          >
+            Inventory
+          </Text>
+
+          {renderNavigation(invNavigation)}
 
           {/* =================================================
               BLOG
@@ -422,7 +412,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </Text>
 
           {renderNavigation(systemNavigation)}
-
         </Stack>
       </ScrollArea>
 
@@ -431,19 +420,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
           ===================================================== */}
 
       <Box px="sm" py="sm">
-        <Divider
-          color="var(--border)"
-          mb="sm"
-        />
+        <Divider color="var(--border)" mb="sm" />
 
-        <Menu
-          position="top-start"
-          offset={8}
-          withArrow
-          shadow="md"
-          width={220}
-        >
-
+        <Menu position="top-start" offset={8} withArrow shadow="md" width={220}>
           {/* =================================================
               USER BUTTON
               ================================================= */}
@@ -459,11 +438,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                 hover:!bg-[var(--accent-bg)]
               "
             >
-              <Group
-                gap="sm"
-                wrap="nowrap"
-              >
-
+              <Group gap="sm" wrap="nowrap">
                 {/* AVATAR */}
 
                 <Box
@@ -501,13 +476,8 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     {username}
                   </Text>
 
-                  <Text
-                    size="xs"
-                    truncate
-                    c="dimmed"
-                  >
-                    {user.email ||
-                      "Manage your account"}
+                  <Text size="xs" truncate c="dimmed">
+                    {user.email || "Manage your account"}
                   </Text>
                 </Box>
 
@@ -518,7 +488,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     text-[var(--text)]
                   "
                 />
-
               </Group>
             </UnstyledButton>
           </Menu.Target>
@@ -533,24 +502,15 @@ export default function Sidebar({ onClose }: SidebarProps) {
               !bg-[var(--surface)]
             "
           >
-
             {/* USER INFORMATION */}
 
             <Box px="sm" py="xs">
-              <Text
-                size="sm"
-                fw={700}
-                className="!text-[var(--text-h)]"
-              >
+              <Text size="sm" fw={700} className="!text-[var(--text-h)]">
                 {username}
               </Text>
 
               {user.email && (
-                <Text
-                  size="xs"
-                  c="dimmed"
-                  truncate
-                >
+                <Text size="xs" c="dimmed" truncate>
                   {user.email}
                 </Text>
               )}
@@ -604,7 +564,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
             >
               Log out
             </Menu.Item>
-
           </Menu.Dropdown>
         </Menu>
       </Box>

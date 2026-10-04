@@ -12,6 +12,7 @@
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@mantine/core": "^9.5.2",
+    "@mantine/dates": "^9.5.2",
     "@mantine/dropzone": "^9.5.2",
     "@mantine/form": "^9.5.2",
     "@mantine/hooks": "^9.5.2",
@@ -24,6 +25,7 @@
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "axios": "^1.20.0",
+    "dayjs": "^1.11.23",
     "lucide-animated": "^1.0.5",
     "lucide-react": "^1.40.0",
     "lucide-react-motion": "^0.5.1",

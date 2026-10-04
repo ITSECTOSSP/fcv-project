@@ -21,13 +21,20 @@ const pageTitles: Record<string, string> = {
 
   "/admin/users": "User Management",
   "/admin/create-user": "Create User",
-  "/admin/edit-user": "Edit User",
+  "/admin/edit-user/:id": "Edit User",
   "/admin/user-permissions/:id": "User Permission",
 
   "/blog-dashboard": "Blog Dashboard",
   "/blog/create-content": "Create Content",
   "/blog/edit-content/:id": "Edit Content",
   "/blog/contents": "Contents",
+
+  "/inventory-dashboard": "Inventory Dashboard",
+  "/inventory/manage": "Manage Equipments",
+  "/inventory/create-equipment": "Create Equipment",
+  "/inventory/edit-equipment/:id": "Edit Equipment",
+  "/inventory/assign-equipment/:id": "Assign Equipment",
+
 };
 
 export default function PageTitle() {

@@ -27,8 +27,13 @@ import EditContentPage from "./pages/services/blog-fcv/contents/edit-content";
 import UserManagement from "./pages/services/admin/users/dashboard";
 import CreateUser from "./pages/services/admin/users/create-user";
 import EditUser from "./pages/services/admin/users/edit-user";
-
 import UserPermissions from "./pages/services/admin/permission/user-permission";
+
+import InventoryDashboard from "./pages/services/inv-fcv/dashboard";
+import Equipments from "./pages/services/inv-fcv/equipment/equipment-dashboard";
+import CreateEquipment from "./pages/services/inv-fcv/equipment/equipment-create";
+import EditEquipment from "./pages/services/inv-fcv/equipment/equipment-edit";
+import AssignEquipment from "./pages/services/inv-fcv/assign/assign-equipment";
 
 import NotFound from "./pages/error/404";
 
@@ -69,18 +74,22 @@ export default function App() {
             <Route path="/admin/users" element={<UserManagement />} />
             <Route path="/admin/create-user" element={<CreateUser />} />
             <Route path="/admin/edit-user/:id" element={<EditUser />} />
-            <Route path="/admin/user-permissions/:id" element={<UserPermissions />} />
+            <Route path="/admin/user-permissions/:id"element={<UserPermissions />}/>
+
+            {/* Inventory */}
+            <Route path="/inventory-dashboard"element={<InventoryDashboard />}/>
+            <Route path="/inventory/manage" element={<Equipments />} />
+            <Route path="/inventory/create-equipment" element={<CreateEquipment />} />
+            <Route path="/inventory/edit-equipment/:id" element={<EditEquipment />} />
+            <Route path="/inventory/assign-equipment/:id" element={<AssignEquipment />} />
 
             {/* Blog */}
             <Route path="/blog-dashboard" element={<BlogPostDashboard />} />
-
             <Route path="/blog/contents" element={<ContentsPage />} />
-
             <Route
               path="/blog/create-content"
               element={<CreateContentPage />}
             />
-
             <Route
               path="/blog/edit-content/:id"
               element={<EditContentPage />}
