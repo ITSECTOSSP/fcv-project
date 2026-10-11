@@ -1,6 +1,5 @@
 import {
   Box,
-  Breadcrumbs,
   Button,
   Group,
   Stack,
@@ -9,7 +8,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { ArrowLeft } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 import ContentForm from "@/components/service/blog-fcv/content-form";
@@ -67,30 +66,6 @@ export default function CreateContentPage() {
       ========================================================= */}
 
       <Box>
-        <Breadcrumbs mb="sm">
-          <Link
-            to="/blog-dashboard"
-            style={{
-              color: "var(--mantine-color-dimmed)",
-              textDecoration: "none",
-            }}
-          >
-            Blog
-          </Link>
-
-          <Link
-            to="/blog/contents"
-            style={{
-              color: "var(--mantine-color-dimmed)",
-              textDecoration: "none",
-            }}
-          >
-            Contents
-          </Link>
-
-          <Text size="sm">Create</Text>
-        </Breadcrumbs>
-
         <Group justify="space-between" align="flex-start">
           <Box>
             <Title order={2}>Create New Content</Title>

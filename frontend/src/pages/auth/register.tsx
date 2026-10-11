@@ -453,11 +453,11 @@ export default function Register() {
                             >
                                 <Stack gap="md">
 
-                                    {/* Full Name */}
+                                    {/* User Name */}
 
                                     <TextInput
-                                        label="Full name"
-                                        placeholder="Enter your full name"
+                                        label="Username"
+                                        placeholder="Enter your username"
                                         autoComplete="name"
                                         size="md"
                                         {...register("name")}

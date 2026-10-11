@@ -10,10 +10,22 @@ import type {
 
 import type { Role, RoleOption, RolesResponse } from "@/types/auth-fcv/role";
 
-import type { User, UserFilters, UserResponse } from "@/types/auth-fcv/user";
+import type {
+  UserFilters,
+  UserResponse,
+  UserWithEmployee,
+} from "@/types/auth-fcv/user";
+
+import type { Employee } from "@/types/hr-fcv/employee";
 
 export function useUsers(filters: UserFilters = {}) {
-  const [users, setUsers] = useState<User[]>([]);
+  /*
+  |--------------------------------------------------------------------------
+  | STATE
+  |--------------------------------------------------------------------------
+  */
+
+  const [users, setUsers] = useState<UserWithEmployee[]>([]);
 
   const [roles, setRoles] = useState<RoleOption[]>([]);
 
@@ -28,15 +40,21 @@ export function useUsers(filters: UserFilters = {}) {
   const [filterError, setFilterError] = useState<string | null>(null);
 
   /*
-   * |--------------------------------------------------------------------------
-   * | Fetch Users
-   * |--------------------------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | FETCH USERS
+  |--------------------------------------------------------------------------
+  */
 
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
+      /*
+      |--------------------------------------------------------------------------
+      | GET AUTH-FCV USERS
+      |--------------------------------------------------------------------------
+      */
 
       const response = await api.get<UserResponse>("/api/auth/admin/users", {
         params: {
@@ -56,7 +74,61 @@ export function useUsers(filters: UserFilters = {}) {
         },
       });
 
-      setUsers(response.data.data);
+      const authUsers = response.data.data;
+
+      /*
+      |--------------------------------------------------------------------------
+      | LOAD HR-FCV EMPLOYEES
+      |--------------------------------------------------------------------------
+      |
+      | Auth-FCV only stores employee_id.
+      | The actual employee information belongs to HR-FCV.
+      |
+      */
+
+      const usersWithEmployees: UserWithEmployee[] = await Promise.all(
+        authUsers.map(async (user) => {
+          let employee: Employee | null = null;
+
+          if (user.employee_id) {
+            try {
+              const employeeResponse = await api.get<{
+                data: Employee;
+              }>(`/api/hr/employees/${user.employee_id}`);
+
+              employee = employeeResponse.data.data;
+            } catch (employeeError) {
+              /*
+                |--------------------------------------------------------------------------
+                | EMPLOYEE LOOKUP FAILED
+                |--------------------------------------------------------------------------
+                |
+                | Keep the user in the table even if HR-FCV
+                | cannot return the employee.
+                |
+                */
+
+              console.error(
+                `Failed to load employee ${user.employee_id} for user ${user.id}:`,
+                employeeError,
+              );
+            }
+          }
+
+          return {
+            ...user,
+            employee,
+          };
+        }),
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | UPDATE USERS
+      |--------------------------------------------------------------------------
+      */
+
+      setUsers(usersWithEmployees);
     } catch (error: any) {
       console.error("Failed to fetch users:", error);
 
@@ -72,10 +144,10 @@ export function useUsers(filters: UserFilters = {}) {
   ]);
 
   /*
-   * |--------------------------------------------------------------------------
-   * | Fetch Role and Permission Filter Options
-   * |--------------------------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | FETCH ROLE AND PERMISSION FILTER OPTIONS
+  |--------------------------------------------------------------------------
+  */
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -114,10 +186,10 @@ export function useUsers(filters: UserFilters = {}) {
   }, []);
 
   /*
-   * |--------------------------------------------------------------------------
-   * | Effects
-   * |--------------------------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | EFFECTS
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
     fetchUsers();
@@ -128,22 +200,19 @@ export function useUsers(filters: UserFilters = {}) {
   }, [fetchFilterOptions]);
 
   /*
-   * |--------------------------------------------------------------------------
-   * | Return
-   * |--------------------------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | RETURN
+  |--------------------------------------------------------------------------
+  */
 
   return {
     users,
     roles,
     permissions,
-
     loading,
     loadingFilters,
-
     error,
     filterError,
-
     fetchUsers,
     fetchFilterOptions,
   };

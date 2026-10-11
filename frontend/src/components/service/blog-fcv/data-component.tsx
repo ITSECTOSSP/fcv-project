@@ -7,7 +7,6 @@ import {
   ThemeIcon,
   Title,
 } from "@mantine/core";
-
 import {
   Archive,
   CheckCircle,
@@ -16,7 +15,6 @@ import {
   Folder,
   Layers,
 } from "lucide-react";
-
 import type { Content } from "@/types/blog-fcv/content";
 
 const GOLD = "#C9A227";
@@ -35,9 +33,9 @@ export default function BlogAnalytics({
   loading = false,
 }: BlogAnalyticsProps) {
   /*
-   * =========================================================
-   * LOADING STATE
-   * =========================================================
+   * |--------------------------------------------------------------------------
+   * | LOADING STATE
+   * |--------------------------------------------------------------------------
    *
    * Explicit loading OR data has not arrived yet.
    */
@@ -52,9 +50,9 @@ export default function BlogAnalytics({
     contentTypesCount === null;
 
   /*
-   * =========================================================
-   * CONTENT COUNTS
-   * =========================================================
+   * |--------------------------------------------------------------------------
+   * | CONTENT COUNTS
+   * |--------------------------------------------------------------------------
    */
 
   const publishedCount =
@@ -70,9 +68,9 @@ export default function BlogAnalytics({
     contents?.filter((content) => content.status === "archived").length ?? 0;
 
   /*
-   * =========================================================
-   * STATISTICS
-   * =========================================================
+   * |--------------------------------------------------------------------------
+   * | STATISTICS
+   * |--------------------------------------------------------------------------
    */
 
   const statistics = [
@@ -140,13 +138,13 @@ export default function BlogAnalytics({
             radius="lg"
             padding="lg"
             className="
-                            !border-[var(--border)]
-                            !bg-[var(--surface)]
-                            transition-all
-                            duration-200
-                            hover:-translate-y-0.5
-                            hover:shadow-md
-                        "
+              !border-[var(--border)]
+              !bg-[var(--surface)]
+              transition-all
+              duration-200
+              hover:-translate-y-0.5
+              hover:shadow-md
+            "
           >
             <Group justify="space-between" align="flex-start">
               <div>
@@ -171,12 +169,9 @@ export default function BlogAnalytics({
                 )}
               </div>
 
+              {/* ICON - Always visible, including during loading */}
               <ThemeIcon variant="light" color="yellow" size="xl" radius="md">
-                {isLoading ? (
-                  <Skeleton height={20} width={20} radius="sm" />
-                ) : (
-                  <Icon size={20} color={GOLD} />
-                )}
+                <Icon size={20} color={GOLD} />
               </ThemeIcon>
             </Group>
           </Card>

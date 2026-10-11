@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 
 import { Button, Group, Stack, Text } from "@mantine/core";
 
+import { notifications } from "@mantine/notifications";
+
 import { ArrowLeft } from "lucide-react";
 
 import EquipmentForm, {
@@ -108,10 +110,7 @@ export default function CreateEquipment() {
       setSubmitting(true);
       setError(null);
 
-      /* =====================================================
-               CREATE EQUIPMENT
-            ====================================================== */
-
+      // Create equipment
       const response = await createEquipment({
         equipment_type_id: values.equipment_type_id,
         date_acquired: values.date_acquired,
@@ -124,56 +123,44 @@ export default function CreateEquipment() {
 
       const equipmentId = response.data.id;
 
-      /* =====================================================
-               CREATE EQUIPMENT ATTACHMENTS
-            ====================================================== */
-
+      // Upload attachments
       for (const attachment of values.attachments) {
-        /*
-         * Skip attachment entries without
-         * a selected file.
-         */
-
         if (!attachment.file) {
           continue;
         }
 
-        /*
-         * Audit fields such as encoded_by and
-         * updated_by are NOT sent from the frontend.
-         *
-         * The inventory backend obtains the
-         * authenticated user from auth.fcv and
-         * automatically sets:
-         *
-         * encoded_by = authenticated user ID
-         * updated_by = authenticated user ID
-         */
-
         await createEquipmentAttachment(equipmentId, {
           attachment_type_id: attachment.attachment_type_id,
-
           name: attachment.name.trim(),
-
           file: attachment.file,
-
           description: attachment.description.trim() || null,
         });
       }
 
-      /* =====================================================
-               SUCCESS
-            ====================================================== */
+      // Success notification
+      notifications.show({
+        title: "Equipment Created",
+        message: "The equipment has been created successfully.",
+        color: "green",
+        autoClose: 3000,
+      });
 
-      console.log("Created equipment:", response.data);
-
+      // Navigate after successful creation
       navigate("/inventory/manage");
     } catch (error) {
       console.error("Failed to create equipment:", error);
 
-      setError(
-        "Unable to create equipment or upload its attachments. Please check your information and try again.",
-      );
+      const errorMessage =
+        "Unable to create equipment or upload its attachments. Please check your information and try again.";
+
+      setError(errorMessage);
+
+      notifications.show({
+        title: "Creation Failed",
+        message: errorMessage,
+        color: "red",
+        autoClose: 5000,
+      });
     } finally {
       setSubmitting(false);
     }

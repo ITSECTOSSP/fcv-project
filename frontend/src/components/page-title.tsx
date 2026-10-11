@@ -29,11 +29,16 @@ const pageTitles: Record<string, string> = {
   "/blog/edit-content/:id": "Edit Content",
   "/blog/contents": "Contents",
 
-  "/inventory-dashboard": "Inventory Dashboard",
+  "/inventory/dashboard": "Inventory Dashboard",
   "/inventory/manage": "Manage Equipments",
   "/inventory/create-equipment": "Create Equipment",
   "/inventory/edit-equipment/:id": "Edit Equipment",
   "/inventory/assign-equipment/:id": "Assign Equipment",
+
+  "/human-resource/dashboard": "Human Resource Dashboard",
+  "/human-resource/manage": "Manage Employees",
+  "/human-resource/create-employee": "Create Employee",
+  "/human-resource/edit-employee/:id": "Edit Employee",
 
 };
 

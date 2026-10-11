@@ -38,6 +38,39 @@ services:
           credentials: false
           max_age: 3600
 
+# Reverb Broadcast
+
+  - name: auth-broadcasting-service
+    url: http://auth-nginx:80
+
+    routes:
+      - name: auth-broadcasting
+        paths:
+          - /api/broadcasting
+        protocols:
+          - http
+        strip_path: false
+
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "http://localhost:5173"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - X-Requested-With
+          exposed_headers:
+            - Content-Length
+          credentials: false
+          max_age: 3600
+          preflight_continue: false
+
   # ========================================
   # BLOG SERVICE
   # ========================================
@@ -117,7 +150,7 @@ services:
   # ========================================
 
   - name: hr-service
-    url: http://hr-nginx:80/api
+    url: http://hr-nginx:80
 
     routes:
       - name: hr-api
@@ -125,7 +158,7 @@ services:
           - /api/hr
         protocols:
           - http
-        strip_path: true
+        strip_path: false
 
     plugins:
       - name: cors

@@ -1,14 +1,71 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { AppShell, Box, Burger, Button, Group, Text } from "@mantine/core";
 import { ArrowUp } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
+
 import Sidebar from "@/components/sidebar";
 import ThemeToggle from "@/components/theme-toggle";
 
+import {
+  PageTitleProvider,
+  usePageTitle,
+} from "@/pages/settings/page-title-context";
+
+function getRouteTitle(pathname: string): string {
+  const segments = pathname.split("/").filter(Boolean);
+
+  const isRecordId = (segment: string) =>
+    /^\d+$/.test(segment) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      segment,
+    );
+
+  while (segments.length && isRecordId(segments[segments.length - 1])) {
+    segments.pop();
+  }
+
+  if (!segments.length) {
+    return "Dashboard";
+  }
+
+  const editIndex = segments.lastIndexOf("edit");
+
+  if (editIndex > 0) {
+    const resource = segments[editIndex - 1]
+      .replace(/-/g, " ")
+      .replace(/s$/, "")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    return `Edit ${resource}`;
+  }
+
+  return segments[segments.length - 1]
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function AppLayout() {
+  return (
+    <PageTitleProvider>
+      <AppLayoutContent />
+    </PageTitleProvider>
+  );
+}
+
+function AppLayoutContent() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [desktopOpened, setDesktopOpened] = useState(true);
   const [mobileOpened, setMobileOpened] = useState(false);
+
+  const location = useLocation();
+  const { pageTitle, setPageTitle } = usePageTitle();
+
+  const routeTitle = getRouteTitle(location.pathname);
+
+  // Reset the title when the route changes.
+  useLayoutEffect(() => {
+    setPageTitle(routeTitle);
+  }, [location.pathname, setPageTitle]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -16,6 +73,7 @@ export default function AppLayout() {
     };
 
     window.addEventListener("scroll", handleScroll);
+    handleScroll();
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
@@ -29,16 +87,6 @@ export default function AppLayout() {
     });
   };
 
-  const location = useLocation();
-
-  const pageTitle =
-    location.pathname
-      .split("/")
-      .filter(Boolean)
-      .pop()
-      ?.replace(/-/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase()) ?? "Dashboard";
-
   return (
     <AppShell
       navbar={{
@@ -50,15 +98,9 @@ export default function AppLayout() {
         },
       }}
       padding={0}
-      className="
-        !bg-[var(--bg)]
-        !text-[var(--text)]
-      "
+      className="!bg-[var(--bg)] !text-[var(--text)]"
     >
-      {/* =====================================================
-          SIDEBAR
-          ===================================================== */}
-
+      {/* SIDEBAR */}
       <AppShell.Navbar
         p={0}
         className="
@@ -70,25 +112,10 @@ export default function AppLayout() {
           duration-200
         "
       >
-        <AppShell.Navbar
-          p={0}
-          className="
-    !border-r
-    !border-[var(--border)]
-    !bg-[var(--surface)]
-    !text-[var(--text)]
-    transition-colors
-    duration-200
-  "
-        >
-          <Sidebar onClose={() => setMobileOpened(false)} />
-        </AppShell.Navbar>
+        <Sidebar onClose={() => setMobileOpened(false)} />
       </AppShell.Navbar>
 
-      {/* =====================================================
-          CONTENT AREA
-          ===================================================== */}
-
+      {/* CONTENT AREA */}
       <AppShell.Main
         className="
           !bg-[var(--bg)]
@@ -97,10 +124,7 @@ export default function AppLayout() {
           duration-200
         "
       >
-        {/* =================================================
-            HEADER
-            ================================================= */}
-
+        {/* HEADER */}
         <Box
           component="header"
           h={50}
@@ -120,7 +144,7 @@ export default function AppLayout() {
         >
           <Group h="100%" px="md" gap="md">
             <Group gap="sm">
-              {/* DESKTOP */}
+              {/* DESKTOP SIDEBAR TOGGLE */}
               <Burger
                 opened={desktopOpened}
                 onClick={() => setDesktopOpened((current) => !current)}
@@ -130,7 +154,7 @@ export default function AppLayout() {
                 aria-label="Toggle sidebar"
               />
 
-              {/* MOBILE */}
+              {/* MOBILE SIDEBAR TOGGLE */}
               <Burger
                 opened={mobileOpened}
                 onClick={() => setMobileOpened((current) => !current)}
@@ -144,17 +168,13 @@ export default function AppLayout() {
             <Text
               size="sm"
               fw={600}
-              className="
-      !text-[var(--text)]
-      tracking-tight
-    "
+              className="!text-[var(--text)] tracking-tight"
             >
               {pageTitle}
             </Text>
           </Group>
 
-          {/* FCV ACCENT */}
-
+          {/* FCV GOLD ACCENT */}
           <Box
             h={2}
             className="
@@ -167,19 +187,13 @@ export default function AppLayout() {
           />
         </Box>
 
-        {/* =================================================
-            PAGE CONTENT
-            ================================================= */}
-
+        {/* PAGE CONTENT */}
         <Box className="p-4">
           <Outlet />
         </Box>
       </AppShell.Main>
 
-      {/* =====================================================
-          FLOATING CONTROLS
-          ===================================================== */}
-
+      {/* FLOATING CONTROLS */}
       <Box
         className="
           fixed

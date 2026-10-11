@@ -21,21 +21,23 @@ import {
   Settings,
   Settings2,
   User,
-  Users,
   X,
   Boxes,
+  LayoutDashboard,
+  Users,
+  SlidersHorizontal,
   ClipboardList,
-  FileArchive,
-  Tags,
 } from "lucide-react";
 
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
+import { useAuth } from "@/lib/api/auth/use-auth";
+
 /*
- * =========================================================
- * MAIN NAVIGATION
- * =========================================================
- */
+|--------------------------------------------------------------------------
+| MAIN NAVIGATION
+|--------------------------------------------------------------------------
+*/
 
 const navigation = [
   {
@@ -44,16 +46,17 @@ const navigation = [
     to: "/dashboard",
   },
 ];
+
 /*
- * =========================================================
- * BLOG NAVIGATION
- * =========================================================
- */
+|--------------------------------------------------------------------------
+| INVENTORY NAVIGATION
+|--------------------------------------------------------------------------
+*/
 
 const invNavigation = [
   {
     label: "Inventory Dashboard",
-    icon: Home,
+    icon: ClipboardList,
     to: "/inventory/dashboard",
   },
   {
@@ -63,17 +66,40 @@ const invNavigation = [
   },
   {
     label: "Inventory Configuration",
-    icon: Settings2 ,
+    icon: Settings2,
     to: "/inventory/configutation",
   },
-
 ];
 
 /*
- * =========================================================
- * BLOG NAVIGATION
- * =========================================================
- */
+|--------------------------------------------------------------------------
+| HR NAVIGATION
+|--------------------------------------------------------------------------
+*/
+
+const hrNavigation = [
+  {
+    label: "Employees Dashboard",
+    icon: LayoutDashboard,
+    to: "/human-resource/dashboard",
+  },
+  {
+    label: "Manage Employees",
+    icon: Users,
+    to: "/human-resource/manage",
+  },
+  {
+    label: "HR Configuration",
+    icon: SlidersHorizontal,
+    to: "/human-resource/configuration",
+  },
+];
+
+/*
+|--------------------------------------------------------------------------
+| BLOG NAVIGATION
+|--------------------------------------------------------------------------
+*/
 
 const blogNavigation = [
   {
@@ -82,7 +108,7 @@ const blogNavigation = [
     to: "/blog-dashboard",
   },
   {
-    label: "Contents",
+    label: "Manage Contents",
     icon: FileText,
     to: "/blog/contents",
   },
@@ -104,10 +130,10 @@ const blogNavigation = [
 ];
 
 /*
- * =========================================================
- * SYSTEM NAVIGATION
- * =========================================================
- */
+|--------------------------------------------------------------------------
+| SYSTEM NAVIGATION
+|--------------------------------------------------------------------------
+*/
 
 const systemNavigation = [
   {
@@ -116,13 +142,6 @@ const systemNavigation = [
     to: "/admin/users",
   },
 ];
-
-interface AuthUser {
-  id?: number;
-  name?: string;
-  username?: string;
-  email?: string;
-}
 
 interface SidebarProps {
   onClose?: () => void;
@@ -133,10 +152,18 @@ export default function Sidebar({ onClose }: SidebarProps) {
   const navigate = useNavigate();
 
   /*
-   * =========================================================
-   * ACTIVE NAVIGATION
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | SHARED AUTHENTICATION STATE
+  |--------------------------------------------------------------------------
+  */
+
+  const { user, isCheckingAuth, isAuthenticated } = useAuth();
+
+  /*
+  |--------------------------------------------------------------------------
+  | ACTIVE NAVIGATION
+  |--------------------------------------------------------------------------
+  */
 
   const isActive = (path: string) => {
     return (
@@ -145,70 +172,95 @@ export default function Sidebar({ onClose }: SidebarProps) {
   };
 
   /*
-   * =========================================================
-   * GET LOGGED-IN USER
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | AUTH ACCOUNT INFORMATION
+  |--------------------------------------------------------------------------
+  */
 
-  const storedUser = localStorage.getItem("auth_user");
-
-  let user: AuthUser = {};
-
-  try {
-    user = storedUser ? JSON.parse(storedUser) : {};
-  } catch {
-    user = {};
-  }
+  const username = user?.name || user?.email || "User";
 
   /*
-   * =========================================================
-   * USERNAME
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | EMPLOYEE NAME
+  |--------------------------------------------------------------------------
+  */
 
-  const username = user.username || user.name || user.email || "User";
+  const employeeName = user?.employee
+    ? [
+        user.employee.first_name,
+        user.employee.middle_name,
+        user.employee.last_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : null;
 
   /*
-   * =========================================================
-   * USER INITIAL
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | DISPLAY NAME
+  |--------------------------------------------------------------------------
+  */
 
-  const userInitial = username.charAt(0).toUpperCase();
+  const displayName = isCheckingAuth
+    ? "Loading account..."
+    : employeeName || username;
 
   /*
-   * =========================================================
-   * LOGOUT
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | USER INITIAL
+  |--------------------------------------------------------------------------
+  */
 
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
+  const userInitial = isCheckingAuth
+    ? "…"
+    : displayName.charAt(0).toUpperCase();
 
-    navigate("/login", {
-      replace: true,
-    });
+  /*
+  |--------------------------------------------------------------------------
+  | EMPLOYEE ORGANIZATION
+  |--------------------------------------------------------------------------
+  */
+
+  const sectionName = user?.employee?.section?.name;
+  const divisionName = user?.employee?.section?.division?.name;
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+
+    window.location.assign("/login");
   };
 
   /*
-   * =========================================================
-   * CLOSE MOBILE SIDEBAR
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | CLOSE MOBILE SIDEBAR
+  |--------------------------------------------------------------------------
+  */
 
   const handleNavigation = () => {
     onClose?.();
   };
 
   /*
-   * =========================================================
-   * RENDER NAVIGATION
-   * =========================================================
-   */
+  |--------------------------------------------------------------------------
+  | RENDER NAVIGATION
+  |--------------------------------------------------------------------------
+  */
 
   const renderNavigation = (
-    items: typeof navigation | typeof blogNavigation | typeof systemNavigation,
+    items:
+      | typeof navigation
+      | typeof invNavigation
+      | typeof hrNavigation
+      | typeof blogNavigation
+      | typeof systemNavigation,
   ) => {
     return items.map((item) => {
       const Icon = item.icon;
@@ -232,16 +284,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
           styles={{
             root: {
               color: active ? "var(--accent)" : "var(--text)",
-
               backgroundColor: active ? "var(--accent-bg)" : "transparent",
-
               fontWeight: active ? 700 : 500,
             },
-
             section: {
               color: active ? "var(--accent)" : "var(--text)",
             },
-
             label: {
               color: active ? "var(--accent)" : "var(--text)",
             },
@@ -267,34 +315,22 @@ export default function Sidebar({ onClose }: SidebarProps) {
     >
       {/* =====================================================
           BRAND
-          ===================================================== */}
+      ===================================================== */}
 
       <Box px="lg" py="md">
         <Group gap="sm" wrap="nowrap">
-          {/* FCV LOGO */}
-
           <Box
             component="img"
             src="/icons.png"
             alt="FCV"
-            className="
-              h-10
-              w-auto
-              shrink-0
-              object-contain
-            "
+            className="h-10 w-auto shrink-0 object-contain"
           />
-
-          {/* BRAND TEXT */}
 
           <Stack gap={1} className="min-w-0 flex-1">
             <Text
               fw={800}
               size="sm"
-              className="
-                !text-[var(--text-h)]
-                tracking-wide
-              "
+              className="!text-[var(--text-h)] tracking-wide"
             >
               FCV
             </Text>
@@ -304,23 +340,14 @@ export default function Sidebar({ onClose }: SidebarProps) {
             </Text>
           </Stack>
 
-          {/* MOBILE CLOSE BUTTON */}
-
           <UnstyledButton
             onClick={onClose}
             hiddenFrom="sm"
             aria-label="Close sidebar"
             className="
-              flex
-              h-9
-              w-9
-              shrink-0
-              items-center
-              justify-center
-              rounded-md
-              !text-[var(--text)]
-              transition-all
-              duration-150
+              flex h-9 w-9 shrink-0 items-center justify-center
+              rounded-md !text-[var(--text)]
+              transition-all duration-150
               hover:!bg-[var(--accent-bg)]
               hover:!text-[var(--accent)]
             "
@@ -334,14 +361,10 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
       {/* =====================================================
           NAVIGATION
-          ===================================================== */}
+      ===================================================== */}
 
       <ScrollArea type="auto" offsetScrollbars className="flex-1">
         <Stack gap={4} px="sm" py="md">
-          {/* =================================================
-              MAIN
-              ================================================= */}
-
           <Text
             size="xs"
             fw={700}
@@ -355,10 +378,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </Text>
 
           {renderNavigation(navigation)}
-
-          {/* =================================================
-              INVENTORY
-              ================================================= */}
 
           <Text
             size="xs"
@@ -375,9 +394,20 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
           {renderNavigation(invNavigation)}
 
-          {/* =================================================
-              BLOG
-              ================================================= */}
+          <Text
+            size="xs"
+            fw={700}
+            c="dimmed"
+            px="sm"
+            mt="lg"
+            mb={4}
+            tt="uppercase"
+            className="tracking-wider"
+          >
+            Human Resource
+          </Text>
+
+          {renderNavigation(hrNavigation)}
 
           <Text
             size="xs"
@@ -393,10 +423,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </Text>
 
           {renderNavigation(blogNavigation)}
-
-          {/* =================================================
-              SYSTEM
-              ================================================= */}
 
           <Text
             size="xs"
@@ -417,24 +443,17 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
       {/* =====================================================
           USER ACCOUNT
-          ===================================================== */}
+      ===================================================== */}
 
       <Box px="sm" py="sm">
         <Divider color="var(--border)" mb="sm" />
 
-        <Menu position="top-start" offset={8} withArrow shadow="md" width={220}>
-          {/* =================================================
-              USER BUTTON
-              ================================================= */}
-
+        <Menu position="top-start" offset={8} withArrow shadow="md" width={260}>
           <Menu.Target>
             <UnstyledButton
               className="
-                w-full
-                rounded-md
-                p-2
-                transition-all
-                duration-150
+                w-full rounded-md p-2
+                transition-all duration-150
                 hover:!bg-[var(--accent-bg)]
               "
             >
@@ -443,82 +462,72 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
                 <Box
                   className="
-                    flex
-                    h-9
-                    w-9
-                    shrink-0
-                    items-center
-                    justify-center
-                    rounded-full
-                    !bg-[var(--accent-bg)]
-                    !text-[var(--accent)]
-                    font-semibold
+                    flex h-9 w-9 shrink-0 items-center justify-center
+                    rounded-full !bg-[var(--accent-bg)]
+                    !text-[var(--accent)] font-semibold
                   "
                 >
                   {userInitial}
                 </Box>
 
-                {/* USERNAME */}
+                {/* USER INFORMATION */}
 
-                <Box
-                  className="
-                    min-w-0
-                    flex-1
-                    text-left
-                  "
-                >
+                <Box className="min-w-0 flex-1 text-left">
                   <Text
                     size="sm"
                     fw={600}
                     truncate
                     className="!text-[var(--text-h)]"
                   >
-                    {username}
+                    {displayName}
                   </Text>
 
                   <Text size="xs" truncate c="dimmed">
-                    {user.email || "Manage your account"}
+                    {isCheckingAuth
+                      ? "Verifying account..."
+                      : user?.email || "Manage your account"}
                   </Text>
                 </Box>
 
-                <ChevronUp
-                  size={16}
-                  className="
-                    shrink-0
-                    text-[var(--text)]
-                  "
-                />
+                <ChevronUp size={16} className="shrink-0 text-[var(--text)]" />
               </Group>
             </UnstyledButton>
           </Menu.Target>
 
-          {/* =================================================
-              DROPDOWN
-              ================================================= */}
+          {/* DROPDOWN */}
 
-          <Menu.Dropdown
-            className="
-              !border-[var(--border)]
-              !bg-[var(--surface)]
-            "
-          >
-            {/* USER INFORMATION */}
-
+          <Menu.Dropdown className="!border-[var(--border)] !bg-[var(--surface)]">
             <Box px="sm" py="xs">
               <Text size="sm" fw={700} className="!text-[var(--text-h)]">
-                {username}
+                {displayName}
               </Text>
 
-              {user.email && (
+              {employeeName && (
                 <Text size="xs" c="dimmed" truncate>
-                  {user.email}
+                  Account: {username}
+                </Text>
+              )}
+
+              {sectionName && (
+                <Text size="xs" c="dimmed" truncate>
+                  Section: {sectionName}
+                </Text>
+              )}
+
+              {divisionName && (
+                <Text size="xs" c="dimmed" truncate>
+                  Division: {divisionName}
+                </Text>
+              )}
+
+              {!isCheckingAuth && !isAuthenticated && (
+                <Text size="xs" c="dimmed">
+                  Not authenticated
                 </Text>
               )}
             </Box>
 
             <Menu.Divider />
-
-            {/* PROFILE */}
 
             <Menu.Item
               component={Link}
@@ -533,8 +542,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
             >
               Profile
             </Menu.Item>
-
-            {/* SETTINGS */}
 
             <Menu.Item
               component={Link}
@@ -552,15 +559,10 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
             <Menu.Divider />
 
-            {/* LOGOUT */}
-
             <Menu.Item
               leftSection={<LogOut size={16} />}
               onClick={handleLogout}
-              className="
-                !text-red-500
-                hover:!bg-red-500/10
-              "
+              className="!text-red-500 hover:!bg-red-500/10"
             >
               Log out
             </Menu.Item>

@@ -1,11 +1,13 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
   Divider,
   Group,
   Menu,
+  Modal,
   MultiSelect,
   Paper,
   Progress,
@@ -22,11 +24,13 @@ import { DateInput } from "@mantine/dates";
 import { useMemo, useState } from "react";
 
 import {
+  AlertCircle,
   CalendarDays,
   Edit,
   MoreVertical,
   PackageOpen,
   Search,
+  ShieldAlert,
   Tag,
   Trash2,
   UserPlus,
@@ -44,9 +48,9 @@ type EquipmentTableProps = {
   equipmentTypes: EquipmentType[];
   loading?: boolean;
   onEdit?: (equipment: Equipment) => void;
-  onDelete?: (equipment: Equipment) => void;
   onView?: (equipment: Equipment) => void;
   onAssign?: (equipment: Equipment) => void;
+  onDelete?: (equipment: Equipment) => void | Promise<void>;
 };
 
 /* =====================================================
@@ -203,6 +207,55 @@ export default function EquipmentTable({
   onView,
   onAssign,
 }: EquipmentTableProps) {
+  /* =====================================================
+   * DELETE MODAL STATE
+   * ===================================================== */
+
+  const [equipmentToDelete, setEquipmentToDelete] = useState<Equipment | null>(
+    null,
+  );
+
+  const [deleting, setDeleting] = useState(false);
+
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  /* =====================================================
+   * DELETE HANDLERS
+   * ===================================================== */
+
+  const handleOpenDeleteModal = (equipment: Equipment) => {
+    setDeleteError(null);
+    setEquipmentToDelete(equipment);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+
+    setEquipmentToDelete(null);
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!equipmentToDelete || !onDelete || deleting) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await onDelete(equipmentToDelete);
+
+      setEquipmentToDelete(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while deleting this equipment.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   /* =====================================================
    * FILTER STATE
    * ===================================================== */
@@ -917,7 +970,9 @@ export default function EquipmentTable({
                                   <Menu.Item
                                     color="red"
                                     leftSection={<Trash2 size={16} />}
-                                    onClick={() => onDelete(equipment)}
+                                    onClick={() =>
+                                      handleOpenDeleteModal(equipment)
+                                    }
                                   >
                                     Delete
                                   </Menu.Item>
@@ -959,6 +1014,165 @@ export default function EquipmentTable({
           </>
         )}
       </Paper>
+      {/* =====================================================
+       * DELETE CONFIRMATION MODAL
+       * ===================================================== */}
+
+      <Modal
+        opened={equipmentToDelete !== null}
+        onClose={handleCloseDeleteModal}
+        centered
+        size="md"
+        radius="lg"
+        title={
+          <Group gap="sm">
+            <ThemeIcon color="red" variant="light" radius="xl" size="lg">
+              <ShieldAlert size={19} />
+            </ThemeIcon>
+
+            <Text fw={700} size="md">
+              Delete Equipment
+            </Text>
+          </Group>
+        }
+        closeOnClickOutside={!deleting}
+        closeOnEscape={!deleting}
+        withCloseButton={!deleting}
+      >
+        {equipmentToDelete && (
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              Are you sure you want to delete this equipment record? Please
+              review the details below before proceeding.
+            </Text>
+
+            {/* Equipment Details */}
+
+            <Paper withBorder radius="md" p="md">
+              <Stack gap="sm">
+                <Group align="flex-start" wrap="nowrap" gap="sm">
+                  <ThemeIcon size={44} radius="md" variant="light" color="blue">
+                    <PackageOpen size={23} />
+                  </ThemeIcon>
+
+                  <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={700} size="sm">
+                      {equipmentToDelete.equipment_type?.name ?? "Unknown Type"}
+                    </Text>
+
+                    <Text size="sm" c="dimmed" lineClamp={2}>
+                      {equipmentToDelete.description || "No description"}
+                    </Text>
+                  </Stack>
+                </Group>
+
+                <Divider />
+
+                <Group justify="space-between" align="flex-start" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    Property Number
+                  </Text>
+
+                  <Text size="sm" fw={600} ta="right">
+                    {equipmentToDelete.property_number || "—"}
+                  </Text>
+                </Group>
+
+                <Group justify="space-between" align="flex-start" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    Serial Number
+                  </Text>
+
+                  <Text size="sm" fw={600} ta="right">
+                    {equipmentToDelete.serial_number || "—"}
+                  </Text>
+                </Group>
+
+                <Group justify="space-between" align="center" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    Date Acquired
+                  </Text>
+
+                  <Text size="sm" fw={600} ta="right">
+                    {formatDate(equipmentToDelete.date_acquired)}
+                  </Text>
+                </Group>
+
+                <Group justify="space-between" align="center" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    Quantity
+                  </Text>
+
+                  <Badge variant="light" color="blue">
+                    {getQuantitySummary(equipmentToDelete).total} units
+                  </Badge>
+                </Group>
+
+                <Group justify="space-between" align="center" gap="xs">
+                  <Text size="sm" c="dimmed">
+                    Unit Cost
+                  </Text>
+
+                  <Text size="sm" fw={700}>
+                    {formatCurrency(equipmentToDelete.unit_cost)}
+                  </Text>
+                </Group>
+              </Stack>
+            </Paper>
+
+            {/* Warning */}
+
+            <Alert
+              icon={<AlertCircle size={18} />}
+              color="red"
+              variant="light"
+              radius="md"
+              title="This action cannot be undone"
+            >
+              <Text size="sm">
+                Deleting this record may affect inventory history and related
+                assignments. Make sure this equipment is eligible for deletion
+                before continuing.
+              </Text>
+            </Alert>
+
+            {/* Deletion Error */}
+
+            {deleteError && (
+              <Alert
+                icon={<AlertCircle size={18} />}
+                color="red"
+                variant="light"
+                radius="md"
+                title="Unable to delete equipment"
+              >
+                {deleteError}
+              </Alert>
+            )}
+
+            {/* Actions */}
+
+            <Group justify="flex-end" gap="sm" mt="xs">
+              <Button
+                variant="default"
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                color="red"
+                leftSection={<Trash2 size={16} />}
+                loading={deleting}
+                onClick={handleConfirmDelete}
+              >
+                Delete Equipment
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   );
 }

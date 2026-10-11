@@ -37,5 +37,8 @@ return [
     'auth' => [
         'url' => env('AUTH_SERVICE_URL', 'http://auth-nginx'),
     ],
+    'audit' => [
+        'token' => env('AUDIT_SERVICE_TOKEN'),
+    ],
 
 ];

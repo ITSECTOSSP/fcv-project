@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/lib/api/auth/use-auth";
 
 import AuthGuard from "./components/auth-guard";
 import PageTitle from "./components/page-title";
@@ -6,6 +7,7 @@ import PageTitle from "./components/page-title";
 import PublicLayout from "./layouts/public-layout";
 import AppLayout from "./layouts/app-layout";
 import AuthLayout from "./layouts/auth-layout";
+import { OnlineUsersProvider } from "@/lib/hook/auth-fcv/online-user-provider";
 
 import Welcome from "./pages/welcome";
 import Solutions from "./pages/services/public-information/solutions";
@@ -35,73 +37,115 @@ import CreateEquipment from "./pages/services/inv-fcv/equipment/equipment-create
 import EditEquipment from "./pages/services/inv-fcv/equipment/equipment-edit";
 import AssignEquipment from "./pages/services/inv-fcv/assign/assign-equipment";
 
+import HrDashboard from "./pages/services/hr-fcv/dashboard";
+import ManageEmployees from "./pages/services/hr-fcv/employees/employee-manage";
+import HrAddEmployee from "./pages/services/hr-fcv/employees/employee-add";
+import HrEditEmployee from "./pages/services/hr-fcv/employees/employee-edit";
+
 import NotFound from "./pages/error/404";
 
 export default function App() {
   return (
     <BrowserRouter>
-      <PageTitle />
+      <AuthProvider>
+        <OnlineUsersProvider>
+          <PageTitle />
 
-      <Routes>
-        {/* =====================================================
-            PUBLIC
-        ===================================================== */}
-        <Route element={<PublicLayout />}>
-          <Route path="/" element={<Welcome />} />
-          <Route path="/solutions" element={<Solutions />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/about" element={<About />} />
-        </Route>
+          <Routes>
+            {/* =====================================================
+              PUBLIC
+          ===================================================== */}
+            <Route element={<PublicLayout />}>
+              <Route path="/" element={<Welcome />} />
+              <Route path="/solutions" element={<Solutions />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/about" element={<About />} />
+            </Route>
 
-        {/* =====================================================
-            AUTHENTICATION
-        ===================================================== */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-        </Route>
+            {/* =====================================================
+              AUTHENTICATION
+          ===================================================== */}
+            <Route element={<AuthLayout />}>
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+            </Route>
 
-        {/* =====================================================
-            AUTHENTICATED APPLICATION
-        ===================================================== */}
-        <Route element={<AuthGuard />}>
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
+            {/* =====================================================
+              AUTHENTICATED APPLICATION
+          ===================================================== */}
+            <Route element={<AuthGuard />}>
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
 
-            {/* Admin */}
-            <Route path="/admin/users" element={<UserManagement />} />
-            <Route path="/admin/create-user" element={<CreateUser />} />
-            <Route path="/admin/edit-user/:id" element={<EditUser />} />
-            <Route path="/admin/user-permissions/:id"element={<UserPermissions />}/>
+                {/* Admin */}
+                <Route path="/admin/users" element={<UserManagement />} />
+                <Route path="/admin/create-user" element={<CreateUser />} />
+                <Route path="/admin/edit-user/:id" element={<EditUser />} />
+                <Route
+                  path="/admin/user-permissions/:id"
+                  element={<UserPermissions />}
+                />
 
-            {/* Inventory */}
-            <Route path="/inventory-dashboard"element={<InventoryDashboard />}/>
-            <Route path="/inventory/manage" element={<Equipments />} />
-            <Route path="/inventory/create-equipment" element={<CreateEquipment />} />
-            <Route path="/inventory/edit-equipment/:id" element={<EditEquipment />} />
-            <Route path="/inventory/assign-equipment/:id" element={<AssignEquipment />} />
+                {/* Inventory */}
+                <Route
+                  path="/inventory/dashboard"
+                  element={<InventoryDashboard />}
+                />
+                <Route path="/inventory/manage" element={<Equipments />} />
+                <Route
+                  path="/inventory/create-equipment"
+                  element={<CreateEquipment />}
+                />
+                <Route
+                  path="/inventory/edit-equipment/:id"
+                  element={<EditEquipment />}
+                />
+                <Route
+                  path="/inventory/assign-equipment/:id"
+                  element={<AssignEquipment />}
+                />
 
-            {/* Blog */}
-            <Route path="/blog-dashboard" element={<BlogPostDashboard />} />
-            <Route path="/blog/contents" element={<ContentsPage />} />
-            <Route
-              path="/blog/create-content"
-              element={<CreateContentPage />}
-            />
-            <Route
-              path="/blog/edit-content/:id"
-              element={<EditContentPage />}
-            />
-          </Route>
-        </Route>
+                {/* Human Resource */}
+                <Route
+                  path="/human-resource/dashboard"
+                  element={<HrDashboard />}
+                />
+                <Route
+                  path="/human-resource/manage"
+                  element={<ManageEmployees />}
+                />
+                <Route
+                  path="/human-resource/create-employee"
+                  element={<HrAddEmployee />}
+                />
+                <Route
+                  path="/human-resource/edit-employee/:id"
+                  element={<HrEditEmployee />}
+                />
 
-        {/* =====================================================
-            404
-        ===================================================== */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+                {/* Blog */}
+                <Route path="/blog-dashboard" element={<BlogPostDashboard />} />
+                <Route path="/blog/contents" element={<ContentsPage />} />
+                <Route
+                  path="/blog/create-content"
+                  element={<CreateContentPage />}
+                />
+                <Route
+                  path="/blog/edit-content/:id"
+                  element={<EditContentPage />}
+                />
+              </Route>
+            </Route>
+
+            {/* =====================================================
+              404
+          ===================================================== */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </OnlineUsersProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

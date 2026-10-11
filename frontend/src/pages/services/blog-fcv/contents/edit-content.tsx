@@ -19,26 +19,52 @@ import { useContents } from "@/lib/hook/blog-fcv/contents";
 import { useCategories } from "@/lib/hook/blog-fcv/categories";
 import { useContentTypes } from "@/lib/hook/blog-fcv/content-types";
 
+import PageTitle from "@/pages/settings/page-title";
+
 import type { Content, ContentPayload } from "@/types/blog-fcv/content";
 
 export default function EditContentPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
+  /* =====================================================
+     STATE
+  ====================================================== */
+
   const [content, setContent] = useState<Content | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const { getContent, updateContent } = useContents();
-
   const { categories, loading: categoriesLoading } = useCategories();
-
   const { contentTypes, loading: contentTypesLoading } = useContentTypes();
+
+  /* =====================================================
+     PAGE TITLE
+  ====================================================== */
+
+  const pageTitle = content?.title?.trim()
+    ? `Edit Content — ${content.title.trim()}`
+    : "Edit Content";
+
+  /* =====================================================
+     LOAD CONTENT
+  ====================================================== */
 
   useEffect(() => {
     if (!id) {
+      notifications.show({
+        title: "Content Not Found",
+        message: "No content ID was provided.",
+        color: "red",
+      });
+
+      navigate("/blog/contents");
+      setLoadingContent(false);
       return;
     }
+
+    let cancelled = false;
 
     const loadContent = async () => {
       try {
@@ -46,10 +72,12 @@ export default function EditContentPage() {
 
         const result = await getContent(Number(id));
 
-        console.log("EDIT CONTENT RESULT:", result);
-
-        setContent(result);
+        if (!cancelled) {
+          setContent(result);
+        }
       } catch (error) {
+        if (cancelled) return;
+
         console.error("GET CONTENT ERROR:", error);
 
         notifications.show({
@@ -60,12 +88,22 @@ export default function EditContentPage() {
 
         navigate("/blog/contents");
       } finally {
-        setLoadingContent(false);
+        if (!cancelled) {
+          setLoadingContent(false);
+        }
       }
     };
 
-    loadContent();
-  }, [id]);
+    void loadContent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, getContent, navigate]);
+
+  /* =====================================================
+     UPDATE CONTENT
+  ====================================================== */
 
   const handleSubmit = async (values: ContentPayload) => {
     if (!id) {
@@ -75,9 +113,7 @@ export default function EditContentPage() {
     try {
       setSubmitting(true);
 
-      const result = await updateContent(Number(id), values);
-
-      console.log("UPDATE CONTENT RESULT:", result);
+      await updateContent(Number(id), values);
 
       notifications.show({
         title: "Content Updated",
@@ -100,31 +136,25 @@ export default function EditContentPage() {
     }
   };
 
+  /* =====================================================
+     FORM INITIAL VALUES
+  ====================================================== */
+
   const initialValues = content
     ? {
         content_type_id: String(content.content_type_id),
-
         title: content.title,
-
         slug: content.slug ?? "",
-
         excerpt: content.excerpt ?? "",
-
         content: content.content ?? "",
-
         status: content.status,
-
         is_featured: content.is_featured,
-
         published_at: content.published_at
           ? new Date(content.published_at).toISOString().slice(0, 16)
           : "",
-
         category_ids:
           content.categories?.map((category) => String(category.id)) ?? [],
-
         featured_media: null,
-
         banner_media: null,
 
         attachments: [],
@@ -142,44 +172,38 @@ export default function EditContentPage() {
           content.media?.filter(
             (media) => media.pivot?.type === "attachment",
           ) ?? [],
+
         // Media removal flags
         remove_featured_media: false,
         remove_banner_media: false,
       }
     : undefined;
 
+  /* =====================================================
+     LOADING STATE
+  ====================================================== */
+
   const loading = loadingContent || categoriesLoading || contentTypesLoading;
 
+  /* =====================================================
+     CANCEL
+  ====================================================== */
+
+  const handleCancel = () => {
+    navigate("/blog/contents");
+  };
+
+  /* =====================================================
+     RENDER
+  ====================================================== */
+
   return (
-    <Stack gap="xl">
-      {/* =========================================================
-          HEADER
-      ========================================================= */}
+    <Stack gap="lg">
+      {/* SHARED APP LAYOUT PAGE TITLE */}
+      <PageTitle title={pageTitle} />
 
+      {/* HEADER */}
       <Box>
-        <Breadcrumbs mb="sm">
-          <Link
-            to="/blog-dashboard"
-            style={{
-              color: "var(--mantine-color-dimmed)",
-              textDecoration: "none",
-            }}
-          >
-            Blog
-          </Link>
-
-          <Link
-            to="/blog/contents"
-            style={{
-              color: "var(--mantine-color-dimmed)",
-              textDecoration: "none",
-            }}
-          >
-            Contents
-          </Link>
-
-          <Text size="sm">Edit</Text>
-        </Breadcrumbs>
 
         <Group justify="space-between" align="flex-start">
           <Box>
@@ -191,25 +215,22 @@ export default function EditContentPage() {
           </Box>
 
           <Button
-            variant="subtle"
-            color="gray"
-            leftSection={<ArrowLeft size={16} />}
+            variant="default"
+            leftSection={<ArrowLeft size={17} />}
             disabled={submitting}
-            onClick={() => navigate("/blog/contents")}
+            onClick={handleCancel}
           >
             Back to Contents
           </Button>
         </Group>
       </Box>
 
-      {/* =========================================================
-          CONTENT FORM
-      ========================================================= */}
-
+      {/* CONTENT FORM */}
       {loading ? (
         <ContentFormSkeleton />
       ) : content ? (
         <ContentForm
+          key={content.id}
           contentTypes={contentTypes}
           categories={categories}
           initialValues={initialValues}

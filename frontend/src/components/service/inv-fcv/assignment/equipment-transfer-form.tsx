@@ -29,6 +29,7 @@ import {
 import { getEquipmentAssignmentAttachments } from "@/lib/api/inv-fcv/equipment-attachment";
 
 import EquipmentTransferModal from "@/components/service/inv-fcv/assignment/equipment-transfer-modal";
+
 import EquipmentAssignmentStatusModal from "@/components/service/inv-fcv/assignment/equipment-assignment-status-modal";
 
 import type {
@@ -64,7 +65,7 @@ const formatDate = (value: string | null | undefined) => {
   return date.toLocaleDateString("en-US", {
     timeZone: "Asia/Manila",
     year: "numeric",
-    month: "long",
+    month: "short",
     day: "numeric",
   });
 };
@@ -93,6 +94,44 @@ const formatFileSize = (bytes: number | null | undefined) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const getStatusColor = (status: EquipmentAssignment["status"]) => {
+  switch (status) {
+    case "active":
+      return "green";
+
+    case "transferred":
+      return "gray";
+
+    case "returned":
+      return "blue";
+
+    case "disposed":
+      return "red";
+
+    default:
+      return "gray";
+  }
+};
+
+const getStatusLabel = (status: EquipmentAssignment["status"]) => {
+  switch (status) {
+    case "active":
+      return "Active";
+
+    case "transferred":
+      return "Transferred";
+
+    case "returned":
+      return "Returned";
+
+    case "disposed":
+      return "Disposed";
+
+    default:
+      return status;
+  }
+};
+
 export default function EquipmentTransferForm({
   equipment,
   assignment,
@@ -118,9 +157,12 @@ export default function EquipmentTransferForm({
     useState(false);
 
   /*
-   * Build the complete assignment group.
+   * =====================================================
+   * BUILD ASSIGNMENT GROUP
+   * =====================================================
    *
    * Hierarchy is based only on:
+   *
    * 1. assignment_group_id
    * 2. assigned_at
    * 3. created_at
@@ -128,6 +170,7 @@ export default function EquipmentTransferForm({
    *
    * Status is NOT used to establish the hierarchy.
    */
+
   const groupedHistory = useMemo(() => {
     const groupId = assignment.assignment_group_id;
 
@@ -159,9 +202,14 @@ export default function EquipmentTransferForm({
   }, [assignmentHistory, assignment]);
 
   /*
-   * The active assignment is always the current/top-level
+   * =====================================================
+   * CURRENT ASSIGNMENT
+   * =====================================================
+   *
+   * The active assignment is always the current/root
    * assignment in the thread.
    */
+
   const currentAssignment = useMemo(() => {
     return (
       groupedHistory.find((item) => item.status === "active") ?? assignment
@@ -169,14 +217,17 @@ export default function EquipmentTransferForm({
   }, [groupedHistory, assignment]);
 
   /*
-   * Display order:
+   * =====================================================
+   * THREAD ORDER
+   * =====================================================
    *
-   * Current
-   *   ↓
-   * Previous
-   *   ↓
-   * Previous
+   * Current assignment
+   *      ↓
+   * Previous assignment
+   *      ↓
+   * Previous assignment
    */
+
   const threadHistory = useMemo(() => {
     const activeIndex = groupedHistory.findIndex(
       (item) => item.id === currentAssignment.id,
@@ -192,9 +243,11 @@ export default function EquipmentTransferForm({
   }, [groupedHistory, currentAssignment]);
 
   /*
-   * Load attachments for every assignment in the
-   * current assignment thread.
+   * =====================================================
+   * LOAD ATTACHMENTS
+   * =====================================================
    */
+
   useEffect(() => {
     let cancelled = false;
 
@@ -248,7 +301,7 @@ export default function EquipmentTransferForm({
       }
     };
 
-    loadAssignmentAttachments();
+    void loadAssignmentAttachments();
 
     return () => {
       cancelled = true;
@@ -256,8 +309,11 @@ export default function EquipmentTransferForm({
   }, [threadHistory]);
 
   /*
+   * =====================================================
    * TRANSFER
+   * =====================================================
    */
+
   const openTransferModal = () => {
     setTransferModalOpen(true);
   };
@@ -267,16 +323,22 @@ export default function EquipmentTransferForm({
   };
 
   /*
+   * =====================================================
    * RETURN
+   * =====================================================
    */
+
   const openReturnModal = () => {
     setStatusAction("return");
     setStatusModalOpen(true);
   };
 
   /*
+   * =====================================================
    * DISPOSE
+   * =====================================================
    */
+
   const openDisposeModal = () => {
     setStatusAction("dispose");
     setStatusModalOpen(true);
@@ -288,72 +350,89 @@ export default function EquipmentTransferForm({
 
   return (
     <>
-      <Stack gap="md">
-        {/* HEADER */}
-        <Group justify="flex-end" align="flex-end">
-          {/* ACTIONS */}
-          {currentAssignment.status === "active" && (
+      <Stack gap="sm">
+        {/* =====================================================
+         * ACTIONS
+         * ===================================================== */}
+
+        {currentAssignment.status === "active" && (
+          <Group justify="flex-end" gap="xs">
+            <Button
+              size="sm"
+              variant="light"
+              color="blue"
+              leftSection={<ArrowLeftRight size={15} />}
+              onClick={openTransferModal}
+            >
+              Transfer Equipment
+            </Button>
+
+            <Button
+              size="sm"
+              variant="light"
+              color="green"
+              leftSection={<PackageCheck size={15} />}
+              onClick={openReturnModal}
+            >
+              Return Equipment
+            </Button>
+
+            <Button
+              size="sm"
+              variant="light"
+              color="red"
+              leftSection={<Trash2 size={15} />}
+              onClick={openDisposeModal}
+            >
+              Dispose Equipment
+            </Button>
+          </Group>
+        )}
+
+        {/* =====================================================
+         * ASSIGNMENT THREAD CONTAINER
+         * ===================================================== */}
+
+        <Paper withBorder radius="md" p="sm">
+          {/* THREAD HEADER */}
+
+          <Group justify="space-between" align="center" mb="sm">
             <Group gap="xs">
-              <Button
-                variant="light"
-                color="blue"
-                leftSection={<ArrowLeftRight size={16} />}
-                onClick={openTransferModal}
-              >
-                Transfer Equipment
-              </Button>
+              <ThemeIcon size={28} radius="sm" variant="light" color="blue">
+                <ArrowLeftRight size={15} />
+              </ThemeIcon>
 
-              <Button
-                variant="light"
-                color="green"
-                leftSection={<PackageCheck size={16} />}
-                onClick={openReturnModal}
-              >
-                Return Equipment
-              </Button>
+              <div>
+                <Text fw={700} size="sm">
+                  Assignment Thread
+                </Text>
 
-              <Button
-                variant="light"
-                color="red"
-                leftSection={<Trash2 size={16} />}
-                onClick={openDisposeModal}
-              >
-                Dispose Equipment
-              </Button>
+                <Text size="xs" c="dimmed">
+                  Current assignment and transfer history
+                </Text>
+              </div>
             </Group>
-          )}
-        </Group>
 
-        {/* ASSIGNMENT THREAD */}
-        <Paper withBorder radius="md" p="md">
-          <Group justify="space-between">
-            <div>
-              <Text fw={700} size="lg">
-                Assignment Thread
-              </Text>
-
-              <Text size="sm" c="dimmed">
-                Current assignment and transfer history
-              </Text>
-            </div>
-
-            <Badge variant="light">
+            <Badge size="sm" variant="light" color="gray">
               {threadHistory.length}{" "}
               {threadHistory.length === 1 ? "assignment" : "assignments"}
             </Badge>
           </Group>
 
-          {/* EQUIPMENT HEADER */}
+          {/* =====================================================
+           * COMPACT EQUIPMENT HEADER
+           * ===================================================== */}
+
           <Paper
             withBorder
-            radius="md"
-            p="md"
-            mb="md"
+            radius="sm"
+            p="xs"
+            mb="sm"
             bg="var(--mantine-color-gray-0)"
           >
-            <Group gap="sm" align="flex-start" wrap="nowrap">
-              <ThemeIcon size={40} radius="md" variant="light" color="blue">
-                <Package size={20} />
+            <Group gap="xs" wrap="nowrap">
+              <ThemeIcon size={30} radius="sm" variant="light" color="blue">
+                <Package size={15} />
               </ThemeIcon>
 
               <Stack
@@ -363,60 +442,48 @@ export default function EquipmentTransferForm({
                   minWidth: 0,
                 }}
               >
-                <Text size="xs" c="dimmed" fw={600} tt="uppercase">
-                  Equipment Assignment
+                <Text size="sm" fw={700} truncate>
+                  {equipment.description}
                 </Text>
 
-                <Text fw={700}>{equipment.description}</Text>
-
-                <Group gap="lg" mt={6} wrap="wrap">
-                  <Group gap={5}>
-                    <Text size="xs" c="dimmed">
-                      Property:
-                    </Text>
-
-                    <Text
-                      size="xs"
-                      fw={600}
-                      style={{
-                        wordBreak: "break-all",
-                      }}
-                    >
+                <Group gap="md" wrap="wrap">
+                  <Text size="xs" c="dimmed">
+                    Property:{" "}
+                    <Text span fw={600} c="dark">
                       {currentAssignment.property_number}
                     </Text>
-                  </Group>
+                  </Text>
 
-                  <Group gap={5}>
-                    <Text size="xs" c="dimmed">
-                      Serial:
-                    </Text>
-
-                    <Text
-                      size="xs"
-                      fw={600}
-                      style={{
-                        wordBreak: "break-all",
-                      }}
-                    >
+                  <Text size="xs" c="dimmed">
+                    Serial:{" "}
+                    <Text span fw={600} c="dark">
                       {currentAssignment.serial_number || "—"}
                     </Text>
-                  </Group>
+                  </Text>
 
-                  <Group gap={5}>
-                    <Text size="xs" c="dimmed">
-                      Quantity:
-                    </Text>
-
-                    <Text size="xs" fw={600}>
+                  <Text size="xs" c="dimmed">
+                    Qty:{" "}
+                    <Text span fw={600} c="dark">
                       {currentAssignment.quantity}
                     </Text>
-                  </Group>
+                  </Text>
                 </Group>
               </Stack>
+
+              <Badge
+                size="xs"
+                variant="light"
+                color={getStatusColor(currentAssignment.status)}
+              >
+                {getStatusLabel(currentAssignment.status)}
+              </Badge>
             </Group>
           </Paper>
 
-          {/* TIMELINE */}
+          {/* =====================================================
+           * TIMELINE
+           * ===================================================== */}
+
           <Stack gap={0}>
             {threadHistory.map((historyItem, index) => {
               const isCurrent = historyItem.id === currentAssignment.id;
@@ -431,17 +498,18 @@ export default function EquipmentTransferForm({
                   key={historyItem.id}
                   style={{
                     position: "relative",
-                    paddingLeft: 38,
-                    paddingBottom: isLast ? 0 : 24,
+                    paddingLeft: 30,
+                    paddingBottom: isLast ? 0 : 12,
                   }}
                 >
                   {/* TIMELINE LINE */}
+
                   {!isLast && (
                     <div
                       style={{
                         position: "absolute",
-                        left: 14,
-                        top: 30,
+                        left: 10,
+                        top: 22,
                         bottom: 0,
                         width: 2,
                         backgroundColor: "var(--mantine-color-gray-3)",
@@ -450,466 +518,338 @@ export default function EquipmentTransferForm({
                   )}
 
                   {/* TIMELINE NODE */}
+
                   <ThemeIcon
-                    size={30}
+                    size={22}
                     radius="xl"
                     variant={isCurrent ? "filled" : "light"}
                     color={isCurrent ? "green" : "gray"}
                     style={{
                       position: "absolute",
                       left: 0,
-                      top: 0,
+                      top: 8,
                       zIndex: 1,
                     }}
                   >
-                    {isCurrent ? <CircleCheck size={16} /> : <User size={15} />}
+                    {isCurrent ? <CircleCheck size={12} /> : <User size={12} />}
                   </ThemeIcon>
 
                   {/* ASSIGNMENT CARD */}
+
                   <Paper
                     withBorder
-                    radius="md"
-                    p="sm"
+                    radius="sm"
+                    p="xs"
                     style={{
                       borderColor: isCurrent
                         ? "var(--mantine-color-green-4)"
                         : "var(--mantine-color-gray-3)",
                     }}
                   >
-                    {/* ASSIGNMENT HEADER */}
-                    <Group
-                      justify="space-between"
-                      align="flex-start"
-                      wrap="nowrap"
-                    >
-                      <Group
-                        gap="sm"
-                        align="flex-start"
-                        wrap="nowrap"
-                        style={{
-                          minWidth: 0,
-                          flex: 1,
-                        }}
-                      >
-                        <ThemeIcon
-                          size={30}
-                          radius="md"
-                          variant="light"
-                          color={isCurrent ? "green" : "gray"}
-                        >
-                          <UserRoundCog size={15} />
-                        </ThemeIcon>
+                    <Stack gap={7}>
+                      {/* ASSIGNMENT HEADER */}
 
-                        <div
+                      <Group
+                        justify="space-between"
+                        align="center"
+                        wrap="nowrap"
+                      >
+                        <Group
+                          gap="xs"
+                          wrap="nowrap"
                           style={{
                             minWidth: 0,
                             flex: 1,
                           }}
                         >
-                          <Group gap="xs" align="center" wrap="wrap">
-                            <Text
-                              size="sm"
-                              fw={700}
-                              style={{
-                                wordBreak: "break-all",
-                              }}
-                            >
-                              {getEmployeeLabel(historyItem.user_employee_id)}
-                            </Text>
+                          <ThemeIcon
+                            size={25}
+                            radius="sm"
+                            variant="light"
+                            color={isCurrent ? "green" : "gray"}
+                          >
+                            <UserRoundCog size={13} />
+                          </ThemeIcon>
 
-                            <Badge
-                              size="xs"
-                              color={isCurrent ? "green" : "gray"}
-                              variant="light"
-                            >
-                              {isCurrent ? "CURRENT" : "TRANSFERRED"}
-                            </Badge>
-                          </Group>
+                          <div
+                            style={{
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
+                            <Group gap={6} wrap="wrap">
+                              <Text
+                                size="sm"
+                                fw={700}
+                                style={{
+                                  wordBreak: "break-all",
+                                }}
+                              >
+                                {getEmployeeLabel(historyItem.user_employee_id)}
+                              </Text>
 
-                          <Group gap="xs" mt={3} wrap="wrap">
-                            <Text size="xs" c="dimmed">
-                              Assigned {formatDate(historyItem.assigned_at)}
-                            </Text>
-
-                            {historyItem.returned_at && (
-                              <>
-                                <Text size="xs" c="dimmed">
-                                  •
-                                </Text>
-
-                                <Text size="xs" c="dimmed">
-                                  Ended {formatDate(historyItem.returned_at)}
-                                </Text>
-                              </>
-                            )}
-                          </Group>
-                        </div>
-                      </Group>
-
-                      <Badge
-                        size="xs"
-                        color={
-                          historyItem.status === "active"
-                            ? "green"
-                            : historyItem.status === "transferred"
-                              ? "gray"
-                              : historyItem.status === "returned"
-                                ? "blue"
-                                : "red"
-                        }
-                        variant="light"
-                      >
-                        {historyItem.status.charAt(0).toUpperCase() +
-                          historyItem.status.slice(1)}
-                      </Badge>
-                    </Group>
-
-                    <Divider my="sm" />
-
-                    {/* ASSIGNMENT DETAILS */}
-                    <SimpleGrid
-                      cols={{
-                        base: 1,
-                        sm: 2,
-                      }}
-                      spacing="sm"
-                    >
-                      <div>
-                        <Text size="xs" c="dimmed" fw={500}>
-                          EMPLOYEE
-                        </Text>
+                              <Badge
+                                size="xs"
+                                variant="light"
+                                color={getStatusColor(historyItem.status)}
+                              >
+                                {getStatusLabel(historyItem.status)}
+                              </Badge>
+                            </Group>
+                          </div>
+                        </Group>
 
                         <Text
                           size="xs"
-                          fw={600}
-                          mt={2}
+                          c="dimmed"
                           style={{
-                            wordBreak: "break-all",
+                            flexShrink: 0,
                           }}
                         >
-                          {getEmployeeLabel(historyItem.user_employee_id)}
-                        </Text>
-                      </div>
-
-                      <div>
-                        <Text size="xs" c="dimmed" fw={500}>
-                          DATE ASSIGNED
-                        </Text>
-
-                        <Text size="xs" fw={600} mt={2}>
                           {formatDate(historyItem.assigned_at)}
                         </Text>
-                      </div>
+                      </Group>
 
-                      {historyItem.is_care_of && (
-                        <div>
-                          <Text size="xs" c="dimmed" fw={500}>
-                            CARE OF
-                          </Text>
+                      {/* COMPACT DETAILS */}
 
-                          <Text
-                            size="xs"
-                            fw={600}
-                            mt={2}
-                            style={{
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            {historyItem.care_of_employee_id ?? "—"}
+                      <Group gap="lg" wrap="wrap">
+                        <Text size="xs" c="dimmed">
+                          Property:{" "}
+                          <Text span fw={600} c="dark">
+                            {historyItem.property_number}
                           </Text>
-                        </div>
-                      )}
+                        </Text>
 
-                      {historyItem.returned_at && (
-                        <div>
-                          <Text size="xs" c="dimmed" fw={500}>
-                            DATE ENDED
+                        <Text size="xs" c="dimmed">
+                          Serial:{" "}
+                          <Text span fw={600} c="dark">
+                            {historyItem.serial_number ?? "—"}
                           </Text>
+                        </Text>
 
-                          <Text size="xs" fw={600} mt={2}>
-                            {formatDate(historyItem.returned_at)}
+                        <Text size="xs" c="dimmed">
+                          Qty:{" "}
+                          <Text span fw={600} c="dark">
+                            {historyItem.quantity}
                           </Text>
-                        </div>
-                      )}
+                        </Text>
+
+                        {historyItem.returned_at && (
+                          <Text size="xs" c="dimmed">
+                            Ended:{" "}
+                            <Text span fw={600} c="dark">
+                              {formatDate(historyItem.returned_at)}
+                            </Text>
+                          </Text>
+                        )}
+                      </Group>
+
+                      {/* CARE OF */}
+
+                      {historyItem.is_care_of &&
+                        historyItem.care_of_employee_id && (
+                          <Group gap={5}>
+                            <UserRoundCog size={12} />
+
+                            <Text size="xs" c="dimmed">
+                              Care of:{" "}
+                              <Text span fw={600} c="dark">
+                                {historyItem.care_of_employee_id}
+                              </Text>
+                            </Text>
+                          </Group>
+                        )}
+
+                      {/* REMARKS */}
 
                       {historyItem.remarks && (
-                        <div
+                        <Text
+                          size="xs"
+                          c="dimmed"
                           style={{
-                            gridColumn: "1 / -1",
+                            whiteSpace: "pre-wrap",
+                            lineHeight: 1.45,
                           }}
                         >
-                          <Text size="xs" c="dimmed" fw={500}>
-                            REMARKS
-                          </Text>
-
-                          <Text
-                            size="xs"
-                            mt={2}
-                            style={{
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {historyItem.remarks}
-                          </Text>
-                        </div>
+                          {historyItem.remarks}
+                        </Text>
                       )}
-                    </SimpleGrid>
 
-                    {/* ATTACHMENTS */}
-                    <Divider my="md" />
+                      {/* ATTACHMENTS */}
 
-                    <Group justify="space-between" align="center" mb="sm">
-                      <Group gap="xs">
-                        <ThemeIcon
-                          size={28}
-                          radius="sm"
-                          variant="light"
-                          color="blue"
-                        >
-                          <Paperclip size={14} />
-                        </ThemeIcon>
+                      <Divider my={2} />
 
-                        <div>
-                          <Text size="sm" fw={600}>
+                      <Group justify="space-between" align="center">
+                        <Group gap={5}>
+                          <Paperclip size={13} />
+
+                          <Text size="xs" fw={600}>
                             Attachments
                           </Text>
 
-                          <Text size="xs" c="dimmed">
-                            Files associated with this assignment
-                          </Text>
-                        </div>
+                          {loadingAssignmentAttachments ? (
+                            <Skeleton height={16} width={25} radius="xl" />
+                          ) : (
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={
+                                attachmentsForAssignment.length > 0
+                                  ? "blue"
+                                  : "gray"
+                              }
+                            >
+                              {attachmentsForAssignment.length}
+                            </Badge>
+                          )}
+                        </Group>
                       </Group>
 
-                      {loadingAssignmentAttachments ? (
-                        <Skeleton height={20} width={34} radius="xl" />
-                      ) : (
-                        <Badge
-                          size="sm"
-                          variant="light"
-                          color={
-                            attachmentsForAssignment.length > 0
-                              ? "blue"
-                              : "gray"
-                          }
-                        >
-                          {attachmentsForAssignment.length}
-                        </Badge>
-                      )}
-                    </Group>
+                      {/* ATTACHMENT LOADING */}
 
-                    {/* ATTACHMENT LOADING */}
-                    {loadingAssignmentAttachments &&
-                    !assignmentAttachments[historyItem.id] ? (
-                      <Stack gap="xs">
-                        {[1, 2].map((item) => (
-                          <Paper key={item} withBorder radius="md" p="sm">
-                            <Group
-                              justify="space-between"
-                              align="center"
-                              wrap="nowrap"
-                            >
-                              <Group
-                                gap="sm"
-                                wrap="nowrap"
-                                style={{
-                                  minWidth: 0,
-                                  flex: 1,
-                                }}
-                              >
-                                <Skeleton
-                                  height={38}
-                                  width={38}
-                                  radius="sm"
-                                  style={{
-                                    flexShrink: 0,
-                                  }}
-                                />
+                      {loadingAssignmentAttachments &&
+                      !assignmentAttachments[historyItem.id] ? (
+                        <Stack gap={5}>
+                          <Skeleton height={34} radius="sm" />
 
-                                <Stack
-                                  gap={6}
-                                  style={{
-                                    minWidth: 0,
-                                    flex: 1,
-                                  }}
-                                >
-                                  <Skeleton height={11} width="55%" />
-
-                                  <Skeleton height={9} width="75%" />
-                                </Stack>
-                              </Group>
-
-                              <Skeleton height={26} width={52} radius="sm" />
-                            </Group>
-                          </Paper>
-                        ))}
-                      </Stack>
-                    ) : attachmentsForAssignment.length === 0 ? (
-                      <Paper
-                        withBorder
-                        radius="md"
-                        p="md"
-                        bg="var(--mantine-color-gray-0)"
-                      >
-                        <Stack align="center" gap={6}>
-                          <ThemeIcon
-                            size={36}
-                            radius="xl"
-                            variant="light"
-                            color="gray"
-                          >
-                            <Paperclip size={17} />
-                          </ThemeIcon>
-
-                          <Text size="xs" fw={500} c="dimmed">
-                            No attachments
-                          </Text>
-
-                          <Text size="xs" c="dimmed" ta="center">
-                            No files have been added to this assignment.
-                          </Text>
+                          <Skeleton height={34} radius="sm" />
                         </Stack>
-                      </Paper>
-                    ) : (
-                      <Stack gap="xs">
-                        {attachmentsForAssignment.map((attachment) => (
-                          <Paper
-                            key={attachment.id}
-                            withBorder
-                            radius="md"
-                            p="sm"
-                            style={{
-                              transition:
-                                "border-color 150ms ease, box-shadow 150ms ease",
-                            }}
-                          >
-                            <Group
-                              justify="space-between"
-                              align="center"
-                              wrap="nowrap"
+                      ) : attachmentsForAssignment.length === 0 ? (
+                        <Text size="xs" c="dimmed">
+                          No attachments for this assignment.
+                        </Text>
+                      ) : (
+                        <Stack gap={5}>
+                          {attachmentsForAssignment.map((attachment) => (
+                            <Paper
+                              key={attachment.id}
+                              withBorder
+                              radius="sm"
+                              p={6}
                             >
-                              {/* FILE INFORMATION */}
                               <Group
-                                gap="sm"
+                                justify="space-between"
+                                align="center"
                                 wrap="nowrap"
-                                style={{
-                                  minWidth: 0,
-                                  flex: 1,
-                                }}
                               >
-                                <ThemeIcon
-                                  size={38}
-                                  radius="sm"
-                                  variant="light"
-                                  color="blue"
-                                  style={{
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <FileText size={17} />
-                                </ThemeIcon>
-
-                                <Stack
-                                  gap={3}
+                                <Group
+                                  gap="xs"
+                                  wrap="nowrap"
                                   style={{
                                     minWidth: 0,
                                     flex: 1,
                                   }}
                                 >
-                                  <Text size="sm" fw={600} truncate>
-                                    {attachment.name}
-                                  </Text>
+                                  <ThemeIcon
+                                    size={28}
+                                    radius="sm"
+                                    variant="light"
+                                    color="blue"
+                                    style={{
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <FileText size={14} />
+                                  </ThemeIcon>
 
-                                  <Group gap={5} wrap="nowrap">
-                                    <Badge
-                                      size="xs"
-                                      variant="light"
-                                      color="gray"
-                                    >
-                                      {attachment.attachment_type?.name ??
-                                        "Attachment"}
-                                    </Badge>
-
-                                    <Text size="xs" c="dimmed" truncate>
-                                      {attachment.file_name}
+                                  <Stack
+                                    gap={1}
+                                    style={{
+                                      minWidth: 0,
+                                      flex: 1,
+                                    }}
+                                  >
+                                    <Text size="xs" fw={600} truncate>
+                                      {attachment.name}
                                     </Text>
 
-                                    <Text
-                                      size="xs"
-                                      c="dimmed"
-                                      style={{
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      •
-                                    </Text>
+                                    <Group gap={5} wrap="nowrap">
+                                      <Badge
+                                        size="xs"
+                                        variant="light"
+                                        color="gray"
+                                      >
+                                        {attachment.attachment_type?.name ??
+                                          "Attachment"}
+                                      </Badge>
 
-                                    <Text
-                                      size="xs"
-                                      c="dimmed"
-                                      style={{
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      {formatFileSize(attachment.file_size)}
-                                    </Text>
-                                  </Group>
-                                </Stack>
+                                      <Text size="10px" c="dimmed" truncate>
+                                        {attachment.file_name}
+                                      </Text>
+
+                                      <Text
+                                        size="10px"
+                                        c="dimmed"
+                                        style={{
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        •
+                                      </Text>
+
+                                      <Text
+                                        size="10px"
+                                        c="dimmed"
+                                        style={{
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {formatFileSize(attachment.file_size)}
+                                      </Text>
+                                    </Group>
+                                  </Stack>
+                                </Group>
+
+                                {attachment.file_url && (
+                                  <Button
+                                    component="a"
+                                    href={attachment.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    variant="subtle"
+                                    color="blue"
+                                    size="compact-xs"
+                                    leftSection={<Download size={12} />}
+                                    style={{
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    View
+                                  </Button>
+                                )}
                               </Group>
 
-                              {/* VIEW BUTTON */}
-                              {attachment.file_url && (
-                                <Button
-                                  component="a"
-                                  href={attachment.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  variant="light"
-                                  color="blue"
-                                  size="compact-sm"
-                                  leftSection={<Download size={14} />}
-                                  style={{
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  View
-                                </Button>
-                              )}
-                            </Group>
-
-                            {/* DESCRIPTION */}
-                            {attachment.description && (
-                              <>
-                                <Divider my="xs" />
-
+                              {attachment.description && (
                                 <Text
-                                  size="xs"
+                                  size="10px"
                                   c="dimmed"
+                                  mt={5}
                                   style={{
                                     whiteSpace: "pre-wrap",
-                                    lineHeight: 1.5,
                                   }}
                                 >
                                   {attachment.description}
                                 </Text>
-                              </>
-                            )}
-                          </Paper>
-                        ))}
-                      </Stack>
-                    )}
+                              )}
+                            </Paper>
+                          ))}
+                        </Stack>
+                      )}
+                    </Stack>
                   </Paper>
 
-                  {/* TRANSFER RELATIONSHIP */}
+                  {/* THREAD RELATIONSHIP */}
+
                   {!isLast && (
-                    <Group gap={5} mt={5} ml={4}>
+                    <Group gap={4} mt={3} ml={3}>
                       <ArrowLeftRight
-                        size={12}
+                        size={11}
                         style={{
                           color: "var(--mantine-color-gray-5)",
                         }}
                       />
 
-                      <Text size="xs" c="dimmed">
+                      <Text size="10px" c="dimmed">
                         Previous assignment
                       </Text>
                     </Group>
@@ -921,7 +861,10 @@ export default function EquipmentTransferForm({
         </Paper>
       </Stack>
 
-      {/* TRANSFER MODAL */}
+      {/* =====================================================
+       * TRANSFER MODAL
+       * ===================================================== */}
+
       <EquipmentTransferModal
         opened={transferModalOpen}
         equipment={equipment}
@@ -935,7 +878,10 @@ export default function EquipmentTransferForm({
         onClose={closeTransferModal}
       />
 
-      {/* RETURN / DISPOSE MODAL */}
+      {/* =====================================================
+       * RETURN / DISPOSE MODAL
+       * ===================================================== */}
+
       <EquipmentAssignmentStatusModal
         opened={statusModalOpen}
         action={statusAction}

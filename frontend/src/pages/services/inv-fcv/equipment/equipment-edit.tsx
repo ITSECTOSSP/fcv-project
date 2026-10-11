@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
-
 import { useNavigate, useParams } from "react-router-dom";
-
 import { Button, Group, Stack, Text } from "@mantine/core";
-
 import { ArrowLeft } from "lucide-react";
 
 import EquipmentForm, {
@@ -19,13 +16,12 @@ import {
 } from "@/lib/api/inv-fcv/equipment-attachment";
 
 import { getEquipmentTypes } from "@/lib/api/inv-fcv/equipment-types";
-
 import { getAttachmentTypes } from "@/lib/api/inv-fcv/attachment-types";
 
+import PageTitle from "@/pages/settings/page-title";
+
 import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
-
 import type { Equipment } from "@/types/inv-fcv/equipment";
-
 import type { EquipmentType } from "@/types/inv-fcv/equipment-types";
 
 /* =====================================================
@@ -38,40 +34,44 @@ type ExistingAttachmentEditValue = {
   description: string;
   file: File | null;
 };
+
 /* =====================================================
    EDIT EQUIPMENT
 ====================================================== */
 
 export default function EditEquipment() {
   const navigate = useNavigate();
-
-  const { id } = useParams<{
-    id: string;
-  }>();
+  const { id } = useParams<{ id: string }>();
 
   /* =====================================================
-       STATE
-    ====================================================== */
+     STATE
+  ====================================================== */
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
-
   const [equipmentTypes, setEquipmentTypes] = useState<EquipmentType[]>([]);
-
   const [attachmentTypes, setAttachmentTypes] = useState<AttachmentType[]>([]);
 
   const [loading, setLoading] = useState(true);
-
   const [loadingTypes, setLoadingTypes] = useState(true);
-
   const [loadingAttachmentTypes, setLoadingAttachmentTypes] = useState(true);
-
   const [submitting, setSubmitting] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
   /* =====================================================
-       LOAD EQUIPMENT
-    ====================================================== */
+     PAGE TITLE
+  ====================================================== */
+
+  const equipmentName =
+    equipment?.property_number?.trim() ||
+    equipment?.description?.trim();
+
+  const pageTitle = equipmentName
+    ? `Edit Equipment — ${equipmentName}`
+    : "Edit Equipment";
+
+  /* =====================================================
+     LOAD EQUIPMENT
+  ====================================================== */
 
   const loadEquipment = async () => {
     if (!id) {
@@ -85,11 +85,9 @@ export default function EditEquipment() {
       setError(null);
 
       const response = await getEquipment(id);
-
       setEquipment(response.data);
     } catch (error) {
       console.error("Failed to load equipment:", error);
-
       setError("Unable to load equipment. Please try again.");
     } finally {
       setLoading(false);
@@ -97,8 +95,8 @@ export default function EditEquipment() {
   };
 
   /* =====================================================
-       LOAD EQUIPMENT TYPES
-    ====================================================== */
+     LOAD EQUIPMENT TYPES
+  ====================================================== */
 
   const loadEquipmentTypes = async () => {
     try {
@@ -111,7 +109,6 @@ export default function EditEquipment() {
       setEquipmentTypes(response.data);
     } catch (error) {
       console.error("Failed to load equipment types:", error);
-
       setError("Unable to load equipment types. Please try again.");
     } finally {
       setLoadingTypes(false);
@@ -119,8 +116,8 @@ export default function EditEquipment() {
   };
 
   /* =====================================================
-       LOAD ATTACHMENT TYPES
-    ====================================================== */
+     LOAD ATTACHMENT TYPES
+  ====================================================== */
 
   const loadAttachmentTypes = async () => {
     try {
@@ -133,7 +130,6 @@ export default function EditEquipment() {
       setAttachmentTypes(response.data);
     } catch (error) {
       console.error("Failed to load attachment types:", error);
-
       setError("Unable to load attachment types. Please try again.");
     } finally {
       setLoadingAttachmentTypes(false);
@@ -141,18 +137,18 @@ export default function EditEquipment() {
   };
 
   /* =====================================================
-       INITIAL LOAD
-    ====================================================== */
+     INITIAL LOAD
+  ====================================================== */
 
   useEffect(() => {
-    loadEquipment();
-    loadEquipmentTypes();
-    loadAttachmentTypes();
+    void loadEquipment();
+    void loadEquipmentTypes();
+    void loadAttachmentTypes();
   }, [id]);
 
   /* =====================================================
-       UPDATE EXISTING ATTACHMENT
-    ====================================================== */
+     UPDATE EXISTING ATTACHMENT
+  ====================================================== */
 
   const handleUpdateExistingAttachment = async (
     attachmentId: string,
@@ -165,18 +161,12 @@ export default function EditEquipment() {
     try {
       const response = await updateEquipmentAttachment(id, attachmentId, {
         attachment_type_id: values.attachment_type_id,
-
         name: values.name.trim(),
-
         description: values.description.trim() || null,
-
         file: values.file,
       });
 
-      /*
-       * Update the attachment in local state
-       * immediately after the API succeeds.
-       */
+      // Update the attachment in local state after the API succeeds.
       setEquipment((current) => {
         if (!current) {
           return current;
@@ -184,7 +174,6 @@ export default function EditEquipment() {
 
         return {
           ...current,
-
           attachments: current.attachments?.map((attachment) =>
             attachment.id === attachmentId ? response.data : attachment,
           ),
@@ -192,14 +181,13 @@ export default function EditEquipment() {
       });
     } catch (error) {
       console.error("Failed to update equipment attachment:", error);
-
       throw error;
     }
   };
 
   /* =====================================================
-       DELETE EXISTING ATTACHMENT
-    ====================================================== */
+     DELETE EXISTING ATTACHMENT
+  ====================================================== */
 
   const handleDeleteExistingAttachment = async (attachmentId: string) => {
     if (!id) {
@@ -209,10 +197,7 @@ export default function EditEquipment() {
     try {
       await deleteEquipmentAttachment(id, attachmentId);
 
-      /*
-       * Remove the attachment from local state
-       * after the API successfully deletes it.
-       */
+      // Remove the attachment from local state after deletion succeeds.
       setEquipment((current) => {
         if (!current) {
           return current;
@@ -220,7 +205,6 @@ export default function EditEquipment() {
 
         return {
           ...current,
-
           attachments: current.attachments?.filter(
             (attachment) => attachment.id !== attachmentId,
           ),
@@ -228,19 +212,17 @@ export default function EditEquipment() {
       });
     } catch (error) {
       console.error("Failed to delete equipment attachment:", error);
-
       throw error;
     }
   };
 
   /* =====================================================
-       SUBMIT
-    ====================================================== */
+     SUBMIT
+  ====================================================== */
 
   const handleSubmit = async (values: EquipmentFormValues) => {
     if (!id) {
       setError("Equipment ID is missing.");
-
       return;
     }
 
@@ -248,57 +230,36 @@ export default function EditEquipment() {
       setSubmitting(true);
       setError(null);
 
-      /* =====================================================
-               UPDATE EQUIPMENT
-            ====================================================== */
+      /* UPDATE EQUIPMENT */
 
       await updateEquipment(id, {
         equipment_type_id: values.equipment_type_id,
-
         date_acquired: values.date_acquired,
-
         quantity: values.quantity,
-
         property_number: values.property_number.trim(),
-
         serial_number: values.serial_number.trim() || null,
-
         description: values.description.trim(),
-
         unit_cost: values.unit_cost,
       });
 
-      /* =====================================================
-               UPLOAD NEW ATTACHMENTS
-            ====================================================== */
+      /* UPLOAD NEW ATTACHMENTS */
 
       for (const attachment of values.attachments) {
-        /*
-         * Existing attachments are not part of
-         * values.attachments.
-         *
-         * Therefore every item here represents
-         * a newly selected file.
-         */
-
+        // Existing attachments are handled separately.
+        // These items represent newly selected files.
         if (!attachment.file) {
           continue;
         }
 
         await createEquipmentAttachment(id, {
           attachment_type_id: attachment.attachment_type_id,
-
           name: attachment.name.trim(),
-
           file: attachment.file,
-
           description: attachment.description.trim() || null,
         });
       }
 
-      /* =====================================================
-               SUCCESS
-            ====================================================== */
+      /* SUCCESS */
 
       navigate("/inventory/manage");
     } catch (error) {
@@ -313,24 +274,24 @@ export default function EditEquipment() {
   };
 
   /* =====================================================
-       CANCEL
-    ====================================================== */
+     CANCEL
+  ====================================================== */
 
   const handleCancel = () => {
     navigate("/inventory/manage");
   };
 
   /* =====================================================
-       RENDER
-    ====================================================== */
+     RENDER
+  ====================================================== */
 
   return (
     <Stack gap="lg">
-      {/* =====================================================
-                HEADER
-            ====================================================== */}
+      {/* DYNAMIC APP LAYOUT PAGE TITLE */}
+      <PageTitle title={pageTitle} />
 
-      <Group justify="space-between">
+      {/* HEADER */}
+      <Group justify="space-between" align="flex-start">
         <div>
           <Text size="xl" fw={700}>
             Edit Equipment
@@ -345,23 +306,17 @@ export default function EditEquipment() {
           variant="default"
           leftSection={<ArrowLeft size={17} />}
           onClick={handleCancel}
+          disabled={submitting}
         >
           Back to Equipments
         </Button>
       </Group>
 
-      {/* =====================================================
-                EQUIPMENT FORM
-            ====================================================== */}
-
+      {/* EQUIPMENT FORM */}
       <EquipmentForm
         key={equipment?.id ?? "loading"}
         equipmentTypes={equipmentTypes}
         attachmentTypes={attachmentTypes}
-        /*
-         * Existing attachments are passed separately
-         * from the new-upload form values.
-         */
         existingAttachments={equipment?.attachments ?? []}
         loadingTypes={loadingTypes}
         loadingAttachmentTypes={loadingAttachmentTypes}
@@ -372,41 +327,21 @@ export default function EditEquipment() {
           equipment
             ? {
                 equipment_type_id: equipment.equipment_type_id,
-
                 date_acquired: equipment.date_acquired,
-
                 quantity: equipment.quantity,
-
                 property_number: equipment.property_number,
-
                 serial_number: equipment.serial_number ?? "",
-
                 description: equipment.description,
-
                 unit_cost: Number(equipment.unit_cost),
-
-                /*
-                 * Existing attachments are
-                 * handled separately through
-                 * existingAttachments.
-                 */
                 attachments: [],
               }
             : undefined
         }
-        /*
-         * These are calculated by the backend
-         * and displayed as read-only fields.
-         */
         assignedQuantity={equipment?.assigned_quantity}
         availableQuantity={equipment?.available_quantity}
         submitLabel="Update Equipment"
         onSubmit={handleSubmit}
         onCancel={handleCancel}
-        /* =====================================================
-                   EXISTING ATTACHMENT ACTIONS
-                ====================================================== */
-
         onUpdateExistingAttachment={handleUpdateExistingAttachment}
         onDeleteExistingAttachment={handleDeleteExistingAttachment}
       />

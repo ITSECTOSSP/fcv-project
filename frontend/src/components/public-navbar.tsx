@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Box,
   Burger,
@@ -16,7 +16,7 @@ const navigation = [
     label: "Home",
     to: "/",
   },
-    {
+  {
     label: "Solutions",
     to: "/solutions",
   },
@@ -67,6 +67,28 @@ export default function PublicNavbar() {
   const closeMobileMenu = () => {
     setMobileOpened(false);
   };
+
+  // Check if the user is logged in by checking for the presence of an auth token in localStorage.
+  const [isLoggedIn, setIsLoggedIn] = useState(() =>
+    Boolean(localStorage.getItem("auth_token")),
+  );
+
+  useEffect(() => {
+    const checkAuth = () => {
+      setIsLoggedIn(Boolean(localStorage.getItem("auth_token")));
+    };
+
+    // Check when the user returns to the tab.
+    window.addEventListener("focus", checkAuth);
+
+    // Check when localStorage changes in another tab.
+    window.addEventListener("storage", checkAuth);
+
+    return () => {
+      window.removeEventListener("focus", checkAuth);
+      window.removeEventListener("storage", checkAuth);
+    };
+  }, []);
 
   return (
     <>
@@ -202,43 +224,62 @@ export default function PublicNavbar() {
                   </Link>
                 );
               })}
-
             </Group>
 
             {/* =================================================
                             DESKTOP AUTH ACTIONS
                         ================================================== */}
             <Group gap="xs" wrap="nowrap" visibleFrom="sm">
-              <Button
-                component={Link}
-                to="/login"
-                variant="subtle"
-                className="
-                                    !text-[var(--text)]
-                                    transition-colors
-                                    duration-150
-                                    hover:!bg-[var(--accent-bg)]
-                                    hover:!text-[var(--accent)]
-                                "
-              >
-                Log in
-              </Button>
+              {isLoggedIn ? (
+                <Button
+                  component={Link}
+                  to="/dashboard"
+                  className="
+        !bg-[var(--accent)]
+        !text-white
+        shadow-sm
+        transition-all
+        duration-200
+        hover:!bg-[var(--accent-hover)]
+        hover:!shadow-md
+      "
+                >
+                  Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    component={Link}
+                    to="/login"
+                    variant="subtle"
+                    className="
+          !text-[var(--text)]
+          transition-colors
+          duration-150
+          hover:!bg-[var(--accent-bg)]
+          hover:!text-[var(--accent)]
+        "
+                  >
+                    Log in
+                  </Button>
 
-              <Button
-                component={Link}
-                to="/register"
-                className="
-                                    !bg-[var(--accent)]
-                                    !text-white
-                                    shadow-sm
-                                    transition-all
-                                    duration-200
-                                    hover:!bg-[var(--accent-hover)]
-                                    hover:!shadow-md
-                                "
-              >
-                Register
-              </Button>
+                  <Button
+                    component={Link}
+                    to="/register"
+                    className="
+          !bg-[var(--accent)]
+          !text-white
+          shadow-sm
+          transition-all
+          duration-200
+          hover:!bg-[var(--accent-hover)]
+          hover:!shadow-md
+        "
+                  >
+                    Register
+                  </Button>
+                </>
+              )}
             </Group>
 
             {/* =================================================
@@ -424,40 +465,63 @@ export default function PublicNavbar() {
           <Stack gap="sm">
             <Divider color="var(--border)" />
 
-            <Button
-              component={Link}
-              to="/login"
-              onClick={closeMobileMenu}
-              variant="subtle"
-              fullWidth
-              size="md"
-              className="
-                                !text-[var(--text)]
-                                hover:!bg-[var(--accent-bg)]
-                                hover:!text-[var(--accent)]
-                            "
-            >
-              Log in
-            </Button>
+            {isLoggedIn ? (
+              <Button
+                component={Link}
+                to="/dashboard"
+                onClick={closeMobileMenu}
+                fullWidth
+                size="md"
+                className="
+        !bg-[var(--accent)]
+        !text-white
+        shadow-sm
+        transition-all
+        duration-200
+        hover:!bg-[var(--accent-hover)]
+        hover:!shadow-md
+      "
+              >
+                Dashboard
+              </Button>
+            ) : (
+              <>
+                <Button
+                  component={Link}
+                  to="/login"
+                  onClick={closeMobileMenu}
+                  variant="subtle"
+                  fullWidth
+                  size="md"
+                  className="
+          !text-[var(--text)]
+          hover:!bg-[var(--accent-bg)]
+          hover:!text-[var(--accent)]
+        "
+                >
+                  Log in
+                </Button>
 
-            <Button
-              component={Link}
-              to="/register"
-              onClick={closeMobileMenu}
-              fullWidth
-              size="md"
-              className="
-                                !bg-[var(--accent)]
-                                !text-white
-                                shadow-sm
-                                transition-all
-                                duration-200
-                                hover:!bg-[var(--accent-hover)]
-                                hover:!shadow-md
-                            "
-            >
-              Register
-            </Button>
+                <Button
+                  component={Link}
+                  to="/register"
+                  onClick={closeMobileMenu}
+                  fullWidth
+                  size="md"
+                  className="
+          !bg-[var(--accent)]
+          !text-white
+          shadow-sm
+          transition-all
+          duration-200
+          hover:!bg-[var(--accent-hover)]
+          hover:!shadow-md
+        "
+                >
+                  Register
+                </Button>
+              </>
+            )}
           </Stack>
         </Stack>
       </Drawer>

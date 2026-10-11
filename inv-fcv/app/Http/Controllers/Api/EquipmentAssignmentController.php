@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\Api;
 
 use App\Enums\EquipmentAssignmentStatus;
@@ -7,107 +6,95 @@ use App\Http\Controllers\Controller;
 use App\Models\Equipment;
 use App\Models\EquipmentAssignment;
 use App\Models\EquipmentTransfer;
-use Illuminate\Http\JsonResponse;
+use App\Services\AuditLogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 
 class EquipmentAssignmentController extends Controller
 {
     /**
-     * Display a listing of equipment assignments.
+     * Fields to include in audit snapshots.
      */
-    public function index(Request $request): JsonResponse
+    private function auditValues(EquipmentAssignment $assignment): array
     {
-        $validated = $request->validate([
-            'equipment_id' => [
-                'nullable',
-                'uuid',
-                'exists:equipments,id',
-            ],
-            'assignment_group_id' => [
-                'nullable',
-                'uuid',
-            ],
-            'user_employee_id' => [
-                'nullable',
-                'uuid',
-            ],
-            'status' => [
-                'nullable',
-                'in:active,returned,transferred,disposed',
-            ],
-            'per_page' => [
-                'nullable',
-                'integer',
-                'min:1',
-                'max:100',
-            ],
+        $values = $assignment->only([
+            'assignment_group_id',
+            'equipment_id',
+            'property_number',
+            'serial_number',
+            'is_care_of',
+            'care_of_employee_id',
+            'user_employee_id',
+            'quantity',
+            'assigned_at',
+            'returned_at',
+            'status',
+            'remarks',
         ]);
 
-        $assignments = EquipmentAssignment::query()
-            ->with([
-                'equipment',
-            ])
-            ->when(
-                $validated['equipment_id'] ?? null,
-                function ($query, $equipmentId) {
-                    $query->where(
-                        'equipment_id',
-                        $equipmentId
-                    );
-                }
-            )
-            ->when(
-                $validated['assignment_group_id'] ?? null,
-                function ($query, $assignmentGroupId) {
-                    $query->where(
-                        'assignment_group_id',
-                        $assignmentGroupId
-                    );
-                }
-            )
-            ->when(
-                $validated['user_employee_id'] ?? null,
-                function ($query, $userEmployeeId) {
-                    $query->where(
-                        'user_employee_id',
-                        $userEmployeeId
-                    );
-                }
-            )
-            ->when(
-                $validated['status'] ?? null,
-                function ($query, $status) {
-                    $query->where(
-                        'status',
-                        $status
-                    );
-                }
-            )
-            ->orderByDesc('assigned_at')
-            ->orderByDesc('created_at')
-            ->paginate(
-                $validated['per_page'] ?? 15
+        $status = $assignment->status;
+
+        $values['status'] = $status instanceof EquipmentAssignmentStatus
+            ? $status->value
+            : $status;
+
+        return $values;
+    }
+
+    /**
+     * List equipment assignments.
+     */
+    public function index(Request $request)
+    {
+        $query = EquipmentAssignment::with([
+            'equipment',
+            'assignmentGroup',
+        ]);
+
+        if ($request->filled('equipment_id')) {
+            $query->where('equipment_id', $request->equipment_id);
+        }
+
+        if ($request->filled('assignment_group_id')) {
+            $query->where(
+                'assignment_group_id',
+                $request->assignment_group_id
             );
+        }
+
+        if ($request->filled('user_employee_id')) {
+            $query->where(
+                'user_employee_id',
+                $request->user_employee_id
+            );
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $assignments = $query
+            ->latest()
+            ->paginate($request->integer('per_page', 10));
 
         return response()->json($assignments);
     }
 
     /**
-     * Store a newly created equipment assignment.
+     * Create an equipment assignment.
      */
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, AuditLogService $auditLog)
     {
         $validated = $request->validate([
             'equipment_id' => [
                 'required',
-                'uuid',
-                'exists:equipments,id',
+                'exists:equipment,id',
             ],
             'property_number' => [
-                'required',
+                'nullable',
                 'string',
                 'max:255',
             ],
@@ -122,11 +109,12 @@ class EquipmentAssignmentController extends Controller
             ],
             'care_of_employee_id' => [
                 'nullable',
-                'uuid',
+                'required_if:is_care_of,1',
+                'exists:employees,id',
             ],
             'user_employee_id' => [
                 'required',
-                'uuid',
+                'exists:employees,id',
             ],
             'quantity' => [
                 'required',
@@ -140,237 +128,143 @@ class EquipmentAssignmentController extends Controller
             'remarks' => [
                 'nullable',
                 'string',
+                'max:5000',
             ],
         ]);
 
-        /*
-         * --------------------------------------------------------------------------
-         * Get Authenticated User
-         * --------------------------------------------------------------------------
-         */
+        $userId = $request->attributes->get('auth_user_id');
 
-        $authUserId = $request->attributes->get('auth_user_id');
-
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        /*
-         * --------------------------------------------------------------------------
-         * Care Of Validation
-         * --------------------------------------------------------------------------
-         */
-
         if (
-            $validated['is_care_of'] === true &&
-            empty($validated['care_of_employee_id'])
+            !$validated['is_care_of']
+            && !empty($validated['care_of_employee_id'])
         ) {
             throw ValidationException::withMessages([
-                'care_of_employee_id' => [
-                    'The care of employee is required when the equipment is under care of an employee.',
-                ],
+                'care_of_employee_id' =>
+                    'Care-of employee must not be specified when care-of is disabled.',
             ]);
         }
 
-        /*
-         * --------------------------------------------------------------------------
-         * Create Assignment
-         * --------------------------------------------------------------------------
-         */
-
         $assignment = DB::transaction(function () use (
             $validated,
-            $authUserId
+            $userId
         ) {
-            /*
-             * ----------------------------------------------------------------------
-             * Lock Equipment
-             * ----------------------------------------------------------------------
-             */
-
             $equipment = Equipment::query()
                 ->lockForUpdate()
                 ->findOrFail($validated['equipment_id']);
 
-            /*
-             * ----------------------------------------------------------------------
-             * Calculate Currently Assigned Quantity
-             * ----------------------------------------------------------------------
-             */
-
-            $assignedQuantity = EquipmentAssignment::query()
-                ->where(
-                    'equipment_id',
-                    $equipment->id
-                )
-                ->where(
-                    'status',
-                    EquipmentAssignmentStatus::ACTIVE
-                )
+            $activeQuantity = EquipmentAssignment::query()
+                ->where('equipment_id', $equipment->id)
+                ->where('status', EquipmentAssignmentStatus::ACTIVE->value)
                 ->sum('quantity');
 
-            $availableQuantity =
-                $equipment->quantity - $assignedQuantity;
-
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Available Quantity
-             * ----------------------------------------------------------------------
-             */
+            $availableQuantity = $equipment->quantity - $activeQuantity;
 
             if ($validated['quantity'] > $availableQuantity) {
                 throw ValidationException::withMessages([
-                    'quantity' => [
-                        "Only {$availableQuantity} unit(s) are currently available.",
-                    ],
+                    'quantity' => 'The requested quantity exceeds the available equipment quantity.',
                 ]);
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Property Number
-             * ----------------------------------------------------------------------
-             */
-
-            $propertyNumberExists = EquipmentAssignment::query()
-                ->where(
-                    'property_number',
-                    $validated['property_number']
-                )
-                ->where(
-                    'status',
-                    EquipmentAssignmentStatus::ACTIVE
-                )
-                ->exists();
-
-            if ($propertyNumberExists) {
-                throw ValidationException::withMessages([
-                    'property_number' => [
-                        'This property number is already assigned.',
-                    ],
-                ]);
-            }
-
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Serial Number
-             * ----------------------------------------------------------------------
-             */
-
-            if (!empty($validated['serial_number'])) {
-                $serialNumberExists = EquipmentAssignment::query()
-                    ->where(
-                        'serial_number',
-                        $validated['serial_number']
-                    )
-                    ->where(
-                        'status',
-                        EquipmentAssignmentStatus::ACTIVE
-                    )
+            if (!empty($validated['property_number'])) {
+                $propertyExists = EquipmentAssignment::query()
+                    ->where('property_number', $validated['property_number'])
+                    ->where('status', EquipmentAssignmentStatus::ACTIVE->value)
                     ->exists();
 
-                if ($serialNumberExists) {
+                if ($propertyExists) {
                     throw ValidationException::withMessages([
-                        'serial_number' => [
-                            'This serial number is already assigned.',
-                        ],
+                        'property_number' => 'This property number is already assigned.',
                     ]);
                 }
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Create Assignment Group
-             * ----------------------------------------------------------------------
-             */
+            if (!empty($validated['serial_number'])) {
+                $serialExists = EquipmentAssignment::query()
+                    ->where('serial_number', $validated['serial_number'])
+                    ->where('status', EquipmentAssignmentStatus::ACTIVE->value)
+                    ->exists();
 
-            $assignmentGroupId = (string) Str::uuid();
+                if ($serialExists) {
+                    throw ValidationException::withMessages([
+                        'serial_number' => 'This serial number is already assigned.',
+                    ]);
+                }
+            }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Create Assignment
-             * ----------------------------------------------------------------------
-             */
+            $assignment = EquipmentAssignment::create([
+                ...$validated,
+                'assignment_group_id' => (string) Str::uuid(),
+                'status' => EquipmentAssignmentStatus::ACTIVE,
+                'encoded_by' => $userId,
+            ]);
 
-            return EquipmentAssignment::create([
-                'assignment_group_id' =>
-                $assignmentGroupId,
-
-                'equipment_id' =>
-                $equipment->id,
-
-                'property_number' =>
-                $validated['property_number'],
-
-                'serial_number' =>
-                $validated['serial_number'] ?? null,
-
-                'is_care_of' =>
-                $validated['is_care_of'],
-
-                'care_of_employee_id' =>
-                $validated['care_of_employee_id'] ?? null,
-
-                'user_employee_id' =>
-                $validated['user_employee_id'],
-
-                'quantity' =>
-                $validated['quantity'],
-
-                'assigned_at' =>
-                $validated['assigned_at'],
-
-                'status' =>
-                EquipmentAssignmentStatus::ACTIVE,
-
-                'remarks' =>
-                $validated['remarks'] ?? null,
-
-                'encoded_by' =>
-                $authUserId,
+            return $assignment->fresh([
+                'equipment',
+                'assignmentGroup',
             ]);
         });
 
+        // Audit only after the transaction has succeeded.
+        $auditLog->record(
+            $request,
+            'CREATE',
+            'equipment_assignment',
+            (string) $assignment->getKey(),
+            'Created equipment assignment: '
+                . ($assignment->property_number ?? $assignment->getKey()),
+            null,
+            $this->auditValues($assignment)
+        );
+
         return response()->json([
             'message' => 'Equipment assigned successfully.',
-            'data' => $assignment->load('equipment'),
+            'data' => $assignment,
         ], 201);
     }
 
     /**
-     * Display the specified equipment assignment.
+     * Show a single equipment assignment.
      */
-    public function show(
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
+    public function show(string $id)
+    {
+        $assignment = EquipmentAssignment::with([
+            'equipment',
+            'assignmentGroup',
+            'attachments.attachmentType',
+            'transfersFrom.toAssignment',
+            'transfersTo.fromAssignment',
+        ])->findOrFail($id);
+
         return response()->json([
-            'data' => $equipmentAssignment->load([
-                'equipment',
-                'assignmentGroup',
-                'attachments.attachmentType',
-                'transfersFrom.toAssignment',
-                'transfersTo.fromAssignment',
-            ]),
+            'data' => $assignment,
         ]);
     }
 
     /**
-     * Update the specified equipment assignment.
+     * Update an equipment assignment.
      */
     public function update(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
+        string $id,
+        AuditLogService $auditLog
+    ) {
+        $assignment = EquipmentAssignment::findOrFail($id);
+
         $validated = $request->validate([
             'property_number' => [
                 'sometimes',
-                'required',
+                'nullable',
                 'string',
                 'max:255',
             ],
             'serial_number' => [
+                'sometimes',
                 'nullable',
                 'string',
                 'max:255',
@@ -380,78 +274,84 @@ class EquipmentAssignmentController extends Controller
                 'boolean',
             ],
             'care_of_employee_id' => [
+                'sometimes',
                 'nullable',
-                'uuid',
+                'exists:employees,id',
             ],
             'user_employee_id' => [
                 'sometimes',
-                'required',
-                'uuid',
+                'exists:employees,id',
             ],
             'quantity' => [
                 'sometimes',
-                'required',
                 'integer',
                 'min:1',
             ],
             'assigned_at' => [
                 'sometimes',
-                'required',
                 'date',
             ],
             'returned_at' => [
+                'sometimes',
                 'nullable',
                 'date',
             ],
             'status' => [
                 'sometimes',
-                'required',
-                'in:active,returned,transferred,disposed',
+                Rule::enum(EquipmentAssignmentStatus::class),
             ],
             'remarks' => [
+                'sometimes',
                 'nullable',
                 'string',
+                'max:5000',
             ],
         ]);
 
-        /*
-         * --------------------------------------------------------------------------
-         * Get Authenticated User
-         * --------------------------------------------------------------------------
-         */
+        $userId = $request->attributes->get('auth_user_id');
 
-        $authUserId = $request->attributes->get('auth_user_id');
-
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        $validated['updated_by'] = $authUserId;
+        $oldValues = $this->auditValues($assignment);
 
-        $equipmentAssignment->update($validated);
+        $assignment->fill($validated);
+        $assignment->updated_by = $userId;
+        $assignment->save();
+
+        $assignment->refresh()->load([
+            'equipment',
+            'assignmentGroup',
+        ]);
+
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'equipment_assignment',
+            (string) $assignment->getKey(),
+            'Updated equipment assignment: '
+                . ($assignment->property_number ?? $assignment->getKey()),
+            $oldValues,
+            $this->auditValues($assignment)
+        );
 
         return response()->json([
             'message' => 'Equipment assignment updated successfully.',
-            'data' => $equipmentAssignment
-                ->fresh()
-                ->load([
-                    'equipment',
-                    'attachments.attachmentType',
-                ]),
+            'data' => $assignment,
         ]);
     }
 
     /**
-     * Mark an equipment assignment as returned.
-     *
-     * This is a terminal state for the current assignment.
+     * Return assigned equipment.
      */
     public function returnEquipment(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
+        string $id,
+        AuditLogService $auditLog
+    ) {
         $validated = $request->validate([
             'returned_at' => [
                 'required',
@@ -460,512 +360,349 @@ class EquipmentAssignmentController extends Controller
             'remarks' => [
                 'nullable',
                 'string',
+                'max:5000',
             ],
         ]);
 
-        /*
-         * --------------------------------------------------------------------------
-         * Get Authenticated User
-         * --------------------------------------------------------------------------
-         */
+        $userId = $request->attributes->get('auth_user_id');
 
-        $authUserId = $request->attributes->get('auth_user_id');
-
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        /*
-         * --------------------------------------------------------------------------
-         * Return Assignment
-         * --------------------------------------------------------------------------
-         *
-         * Lock the assignment so two simultaneous requests cannot both
-         * successfully change the same active assignment.
-         */
-
-        $updatedAssignment = DB::transaction(function () use (
-            $equipmentAssignment,
+        $result = DB::transaction(function () use (
+            $id,
             $validated,
-            $authUserId
+            $userId
         ) {
             $assignment = EquipmentAssignment::query()
                 ->lockForUpdate()
-                ->findOrFail($equipmentAssignment->id);
-
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Current Status
-             * ----------------------------------------------------------------------
-             */
+                ->findOrFail($id);
 
             if (
-                $assignment->status !==
-                EquipmentAssignmentStatus::ACTIVE
+                $assignment->status !== EquipmentAssignmentStatus::ACTIVE
             ) {
                 throw ValidationException::withMessages([
-                    'status' => [
-                        'Only active equipment assignments can be returned.',
-                    ],
+                    'status' => 'Only active assignments can be returned.',
                 ]);
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Mark Assignment as Returned
-             * ----------------------------------------------------------------------
-             */
+            $oldValues = $this->auditValues($assignment);
 
             $assignment->update([
-                'status' =>
-                EquipmentAssignmentStatus::RETURNED,
-
-                'returned_at' =>
-                $validated['returned_at'],
-
-                'remarks' =>
-                $validated['remarks'] ?? null,
-
-                'updated_by' =>
-                $authUserId,
+                'status' => EquipmentAssignmentStatus::RETURNED,
+                'returned_at' => $validated['returned_at'],
+                'remarks' => $validated['remarks'] ?? $assignment->remarks,
+                'updated_by' => $userId,
             ]);
 
-            return $assignment;
+            return [
+                'old_values' => $oldValues,
+                'assignment' => $assignment->fresh([
+                    'equipment',
+                    'assignmentGroup',
+                ]),
+            ];
         });
+
+        $assignment = $result['assignment'];
+
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'equipment_assignment',
+            (string) $assignment->getKey(),
+            'Returned equipment assignment: '
+                . ($assignment->property_number ?? $assignment->getKey()),
+            $result['old_values'],
+            $this->auditValues($assignment)
+        );
 
         return response()->json([
             'message' => 'Equipment returned successfully.',
-            'data' => $updatedAssignment
-                ->fresh()
-                ->load([
-                    'equipment',
-                    'attachments.attachmentType',
-                ]),
+            'data' => $assignment,
         ]);
     }
 
     /**
-     * Transfer an equipment assignment to another employee.
-     *
-     * This creates a new assignment while preserving the
-     * assignment history and transfer relationship.
+     * Transfer equipment to another employee.
      */
     public function transfer(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
+        string $id,
+        AuditLogService $auditLog
+    ) {
         $validated = $request->validate([
-            /*
-             * ----------------------------------------------------------------------
-             * Receiving Employee
-             * ----------------------------------------------------------------------
-             */
-
             'user_employee_id' => [
                 'required',
-                'uuid',
+                'exists:employees,id',
             ],
-
-            /*
-             * ----------------------------------------------------------------------
-             * Care Of
-             * ----------------------------------------------------------------------
-             */
-
             'is_care_of' => [
                 'required',
                 'boolean',
             ],
-
             'care_of_employee_id' => [
                 'nullable',
-                'uuid',
+                'required_if:is_care_of,1',
+                'exists:employees,id',
             ],
-
-            /*
-             * ----------------------------------------------------------------------
-             * Transfer Date
-             * ----------------------------------------------------------------------
-             */
-
-            'transferred_at' => [
+            'transfer_date' => [
                 'required',
                 'date',
             ],
-
-            /*
-             * ----------------------------------------------------------------------
-             * Remarks
-             * ----------------------------------------------------------------------
-             */
-
             'remarks' => [
                 'nullable',
                 'string',
+                'max:5000',
             ],
         ]);
 
-        /*
-         * --------------------------------------------------------------------------
-         * Get Authenticated User
-         * --------------------------------------------------------------------------
-         */
+        $userId = $request->attributes->get('auth_user_id');
 
-        $authUserId = $request->attributes->get('auth_user_id');
-
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        /*
-         * --------------------------------------------------------------------------
-         * Care Of Validation
-         * --------------------------------------------------------------------------
-         */
-
-        if (
-            $validated['is_care_of'] === true &&
-            empty($validated['care_of_employee_id'])
-        ) {
-            throw ValidationException::withMessages([
-                'care_of_employee_id' => [
-                    'The care of employee is required when the equipment is under care of an employee.',
-                ],
-            ]);
-        }
-
-        /*
-         * --------------------------------------------------------------------------
-         * Prevent Self Transfer
-         * --------------------------------------------------------------------------
-         */
-
-        if (
-            $validated['user_employee_id'] ===
-            $equipmentAssignment->user_employee_id
-        ) {
-            throw ValidationException::withMessages([
-                'user_employee_id' => [
-                    'The equipment is already assigned to this employee.',
-                ],
-            ]);
-        }
-
-        /*
-         * --------------------------------------------------------------------------
-         * Transfer Assignment
-         * --------------------------------------------------------------------------
-         */
-
         $result = DB::transaction(function () use (
-            $equipmentAssignment,
+            $id,
             $validated,
-            $authUserId
+            $userId
         ) {
-            /*
-             * ----------------------------------------------------------------------
-             * Lock Equipment
-             * ----------------------------------------------------------------------
-             */
-
-            $equipment = Equipment::query()
-                ->lockForUpdate()
-                ->findOrFail($equipmentAssignment->equipment_id);
-
-            /*
-             * ----------------------------------------------------------------------
-             * Lock Source Assignment
-             * ----------------------------------------------------------------------
-             */
-
             $sourceAssignment = EquipmentAssignment::query()
                 ->lockForUpdate()
-                ->findOrFail($equipmentAssignment->id);
-
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Source Assignment
-             * ----------------------------------------------------------------------
-             */
+                ->findOrFail($id);
 
             if (
-                $sourceAssignment->status !==
-                EquipmentAssignmentStatus::ACTIVE
+                $sourceAssignment->status !== EquipmentAssignmentStatus::ACTIVE
             ) {
                 throw ValidationException::withMessages([
-                    'status' => [
-                        'Only active equipment assignments can be transferred.',
-                    ],
+                    'status' => 'Only active assignments can be transferred.',
                 ]);
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Prevent Same Employee Transfer
-             * ----------------------------------------------------------------------
-             */
-
             if (
-                $sourceAssignment->user_employee_id ===
-                $validated['user_employee_id']
+                (string) $sourceAssignment->user_employee_id
+                === (string) $validated['user_employee_id']
             ) {
                 throw ValidationException::withMessages([
-                    'user_employee_id' => [
-                        'The equipment is already assigned to this employee.',
-                    ],
+                    'user_employee_id' => 'The equipment is already assigned to this employee.',
                 ]);
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Mark Source Assignment as Transferred
-             * ----------------------------------------------------------------------
-             */
+            if (
+                $validated['is_care_of']
+                && !empty($validated['care_of_employee_id'])
+                && (string) $validated['care_of_employee_id']
+                    === (string) $validated['user_employee_id']
+            ) {
+                throw ValidationException::withMessages([
+                    'care_of_employee_id' => 'The care-of employee must be different from the assigned employee.',
+                ]);
+            }
+
+            $sourceOldValues = $this->auditValues($sourceAssignment);
 
             $sourceAssignment->update([
-                'status' =>
-                EquipmentAssignmentStatus::TRANSFERRED,
-
-                'returned_at' =>
-                $validated['transferred_at'],
-
-                'updated_by' =>
-                $authUserId,
+                'status' => EquipmentAssignmentStatus::TRANSFERRED,
+                'returned_at' => $validated['transfer_date'],
+                'updated_by' => $userId,
             ]);
-
-            /*
-             * ----------------------------------------------------------------------
-             * Create Destination Assignment
-             * ----------------------------------------------------------------------
-             *
-             * The new assignment inherits:
-             *
-             * - assignment_group_id
-             * - equipment_id
-             * - property_number
-             * - serial_number
-             * - quantity
-             *
-             * This keeps the physical equipment identity and lifecycle
-             * connected.
-             */
 
             $newAssignment = EquipmentAssignment::create([
-                'assignment_group_id' =>
-                $sourceAssignment->assignment_group_id,
-
-                'equipment_id' =>
-                $equipment->id,
-
-                'property_number' =>
-                $sourceAssignment->property_number,
-
-                'serial_number' =>
-                $sourceAssignment->serial_number,
-
-                'is_care_of' =>
-                $validated['is_care_of'],
-
-                'care_of_employee_id' =>
-                $validated['care_of_employee_id'] ?? null,
-
-                'user_employee_id' =>
-                $validated['user_employee_id'],
-
-                'quantity' =>
-                $sourceAssignment->quantity,
-
-                'assigned_at' =>
-                $validated['transferred_at'],
-
-                'status' =>
-                EquipmentAssignmentStatus::ACTIVE,
-
-                'remarks' =>
-                $validated['remarks'] ?? null,
-
-                'encoded_by' =>
-                $authUserId,
+                'assignment_group_id' => $sourceAssignment->assignment_group_id,
+                'equipment_id' => $sourceAssignment->equipment_id,
+                'property_number' => $sourceAssignment->property_number,
+                'serial_number' => $sourceAssignment->serial_number,
+                'is_care_of' => $validated['is_care_of'],
+                'care_of_employee_id' => $validated['is_care_of']
+                    ? ($validated['care_of_employee_id'] ?? null)
+                    : null,
+                'user_employee_id' => $validated['user_employee_id'],
+                'quantity' => $sourceAssignment->quantity,
+                'assigned_at' => $validated['transfer_date'],
+                'status' => EquipmentAssignmentStatus::ACTIVE,
+                'remarks' => $validated['remarks']
+                    ?? $sourceAssignment->remarks,
+                'encoded_by' => $userId,
             ]);
 
             /*
-             * ----------------------------------------------------------------------
-             * Create Transfer Record
-             * ----------------------------------------------------------------------
+             * Keep the transfer model's field names aligned with your
+             * existing EquipmentTransfer migration/model.
              */
-
             $transfer = EquipmentTransfer::create([
-                'equipment_id' =>
-                $equipment->id,
-
-                'from_assignment_id' =>
-                $sourceAssignment->id,
-
-                'to_assignment_id' =>
-                $newAssignment->id,
-
-                'quantity' =>
-                $sourceAssignment->quantity,
-
-                'transferred_at' =>
-                $validated['transferred_at'],
-
-                'remarks' =>
-                $validated['remarks'] ?? null,
-
-                'encoded_by' =>
-                $authUserId,
+                'from_assignment_id' => $sourceAssignment->getKey(),
+                'to_assignment_id' => $newAssignment->getKey(),
+                'transfer_date' => $validated['transfer_date'],
+                'remarks' => $validated['remarks'] ?? null,
+                'encoded_by' => $userId,
             ]);
 
             return [
-                'assignment' => $newAssignment,
+                'source_assignment' => $sourceAssignment->fresh([
+                    'equipment',
+                    'assignmentGroup',
+                ]),
+                'source_old_values' => $sourceOldValues,
+                'assignment' => $newAssignment->fresh([
+                    'equipment',
+                    'assignmentGroup',
+                ]),
                 'transfer' => $transfer,
             ];
         });
 
+        $sourceAssignment = $result['source_assignment'];
+        $newAssignment = $result['assignment'];
+
+        // Audit the previous assignment changing to TRANSFERRED.
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'equipment_assignment',
+            (string) $sourceAssignment->getKey(),
+            'Transferred equipment from employee '
+                . $sourceAssignment->user_employee_id,
+            $result['source_old_values'],
+            $this->auditValues($sourceAssignment)
+        );
+
+        // Audit the new active assignment.
+        $auditLog->record(
+            $request,
+            'CREATE',
+            'equipment_assignment',
+            (string) $newAssignment->getKey(),
+            'Created equipment assignment after transfer: '
+                . ($newAssignment->property_number ?? $newAssignment->getKey()),
+            null,
+            $this->auditValues($newAssignment)
+        );
+
         return response()->json([
             'message' => 'Equipment transferred successfully.',
-
             'data' => [
-                'assignment' => $result['assignment']
-                    ->load([
-                        'equipment',
-                        'attachments.attachmentType',
-                    ]),
-
-                'transfer' => $result['transfer']
-                    ->load([
-                        'fromAssignment',
-                        'toAssignment',
-                    ]),
+                'assignment' => $newAssignment,
+                'transfer' => $result['transfer'],
             ],
         ], 201);
     }
 
     /**
-     * Mark an equipment assignment as disposed.
-     *
-     * Disposal is a terminal state for the current assignment.
+     * Dispose of assigned equipment.
      */
     public function dispose(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
+        string $id,
+        AuditLogService $auditLog
+    ) {
         $validated = $request->validate([
             'remarks' => [
-                'nullable',
+                'required',
                 'string',
+                'max:5000',
             ],
         ]);
 
-        /*
-         * --------------------------------------------------------------------------
-         * Get Authenticated User
-         * --------------------------------------------------------------------------
-         */
+        $userId = $request->attributes->get('auth_user_id');
 
-        $authUserId = $request->attributes->get('auth_user_id');
-
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        /*
-         * --------------------------------------------------------------------------
-         * Dispose Assignment
-         * --------------------------------------------------------------------------
-         */
-
-        $updatedAssignment = DB::transaction(function () use (
-            $equipmentAssignment,
+        $result = DB::transaction(function () use (
+            $id,
             $validated,
-            $authUserId
+            $userId
         ) {
-            /*
-             * ----------------------------------------------------------------------
-             * Lock Assignment
-             * ----------------------------------------------------------------------
-             */
-
             $assignment = EquipmentAssignment::query()
                 ->lockForUpdate()
-                ->findOrFail($equipmentAssignment->id);
-
-            /*
-             * ----------------------------------------------------------------------
-             * Validate Current Status
-             * ----------------------------------------------------------------------
-             */
+                ->findOrFail($id);
 
             if (
-                $assignment->status !==
-                EquipmentAssignmentStatus::ACTIVE
+                $assignment->status !== EquipmentAssignmentStatus::ACTIVE
             ) {
                 throw ValidationException::withMessages([
-                    'status' => [
-                        'Only active equipment assignments can be disposed.',
-                    ],
+                    'status' => 'Only active assignments can be disposed.',
                 ]);
             }
 
-            /*
-             * ----------------------------------------------------------------------
-             * Mark Assignment as Disposed
-             * ----------------------------------------------------------------------
-             *
-             * Do NOT set returned_at here.
-             *
-             * returned_at represents an actual equipment return and
-             * should remain null for disposed equipment.
-             */
+            $oldValues = $this->auditValues($assignment);
 
             $assignment->update([
-                'status' =>
-                EquipmentAssignmentStatus::DISPOSED,
-
-                'remarks' =>
-                $validated['remarks'] ?? null,
-
-                'updated_by' =>
-                $authUserId,
+                'status' => EquipmentAssignmentStatus::DISPOSED,
+                'remarks' => $validated['remarks'],
+                'updated_by' => $userId,
             ]);
 
-            return $assignment;
+            return [
+                'old_values' => $oldValues,
+                'assignment' => $assignment->fresh([
+                    'equipment',
+                    'assignmentGroup',
+                ]),
+            ];
         });
 
+        $assignment = $result['assignment'];
+
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'equipment_assignment',
+            (string) $assignment->getKey(),
+            'Disposed equipment assignment: '
+                . ($assignment->property_number ?? $assignment->getKey()),
+            $result['old_values'],
+            $this->auditValues($assignment)
+        );
+
         return response()->json([
-            'message' => 'Equipment assignment disposed successfully.',
-            'data' => $updatedAssignment
-                ->fresh()
-                ->load([
-                    'equipment',
-                    'attachments.attachmentType',
-                ]),
+            'message' => 'Equipment disposed successfully.',
+            'data' => $assignment,
         ]);
     }
 
     /**
-     * Remove the specified equipment assignment.
+     * Delete an equipment assignment.
      */
     public function destroy(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
-    ): JsonResponse {
-        $authUserId = $request->attributes->get('auth_user_id');
+        string $id,
+        AuditLogService $auditLog
+    ) {
+        $userId = $request->attributes->get('auth_user_id');
 
-        if (!$authUserId) {
+        if (!$userId) {
             return response()->json([
-                'message' => 'Authenticated user could not be identified.',
+                'message' => 'Authenticated user not found.',
             ], 401);
         }
 
-        $equipmentAssignment->delete();
+        $assignment = EquipmentAssignment::findOrFail($id);
+
+        $oldValues = $this->auditValues($assignment);
+        $recordId = (string) $assignment->getKey();
+        $propertyNumber = $assignment->property_number;
+
+        $assignment->delete();
+
+        $auditLog->record(
+            $request,
+            'DELETE',
+            'equipment_assignment',
+            $recordId,
+            'Deleted equipment assignment: '
+                . ($propertyNumber ?? $recordId),
+            $oldValues,
+            null
+        );
 
         return response()->json([
             'message' => 'Equipment assignment deleted successfully.',
