@@ -10,6 +10,7 @@ import {
 import api from "@/lib/api/api";
 
 import type { User, UserWithEmployee } from "@/types/auth-fcv/user";
+import type { Permission } from "@/types/auth-fcv/permission";
 import type { Employee } from "@/types/hr-fcv/employee";
 
 /*
@@ -20,6 +21,8 @@ import type { Employee } from "@/types/hr-fcv/employee";
 
 interface AuthContextType {
   user: UserWithEmployee | null;
+  permissions: Permission[];
+  hasPermission: (permission: string) => boolean;
   isAuthenticated: boolean;
   isCheckingAuth: boolean;
   refreshAuth: () => Promise<void>;
@@ -43,27 +46,78 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserWithEmployee | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const setSession = useCallback((authUser: User) => {
-    const authenticatedUser: UserWithEmployee = {
-      ...authUser,
-      employee: null,
-    };
+  /*
+  |--------------------------------------------------------------------------
+  | FETCH CURRENT USER PERMISSIONS
+  |--------------------------------------------------------------------------
+  */
 
-    setUser(authenticatedUser);
-    setIsAuthenticated(true);
-    setIsCheckingAuth(false);
+  const fetchPermissions = useCallback(async (): Promise<Permission[]> => {
+    const response = await api.get<{ data: Permission[] }>(
+      "/api/auth/user/permissions",
+    );
+
+    return response.data.data;
   }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | CHECK USER PERMISSION
+  |--------------------------------------------------------------------------
+  */
+
+  const hasPermission = useCallback(
+    (permission: string): boolean => {
+      return permissions.some((item) => item.key === permission);
+    },
+    [permissions],
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | SET SESSION AFTER LOGIN
+  |--------------------------------------------------------------------------
+  */
+
+  const setSession = useCallback(
+    (authUser: User) => {
+      const authenticatedUser: UserWithEmployee = {
+        ...authUser,
+        employee: null,
+      };
+
+      setUser(authenticatedUser);
+      setPermissions([]);
+      setIsAuthenticated(true);
+      setIsCheckingAuth(true);
+
+      void fetchPermissions()
+        .then((userPermissions) => {
+          setPermissions(userPermissions);
+        })
+        .catch((error: unknown) => {
+          // Fail closed: no permissions are granted if loading fails.
+          setPermissions([]);
+          console.error("Failed to load user permissions.", error);
+        })
+        .finally(() => {
+          setIsCheckingAuth(false);
+        });
+    },
+    [fetchPermissions],
+  );
 
   /*
   |--------------------------------------------------------------------------
   | FETCH AUTHENTICATED USER
   |--------------------------------------------------------------------------
   |
-  | Auth-FCV provides account information.
-  | HR-FCV provides the employee information linked to that account.
+  | Auth-FCV provides account information and permissions.
+  | HR-FCV provides the linked employee information.
   |
   */
 
@@ -72,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!token) {
       setUser(null);
+      setPermissions([]);
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
       return;
@@ -87,8 +142,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       */
 
       const authResponse = await api.get<{ user: User }>("/api/auth/user");
-
       const authUser = authResponse.data.user;
+
+      /*
+      |--------------------------------------------------------------------------
+      | FETCH CURRENT USER PERMISSIONS
+      |--------------------------------------------------------------------------
+      */
+
+      const userPermissions = await fetchPermissions();
+      setPermissions(userPermissions);
 
       /*
       |--------------------------------------------------------------------------
@@ -106,11 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           employee = employeeResponse.data.data ?? null;
         } catch (employeeError: unknown) {
-          /*
-          | HR-FCV failure should not automatically invalidate
-          | a valid Auth-FCV session.
-          */
-
+          // HR failure does not automatically invalidate a valid auth session.
           console.error(
             "Failed to load HR-FCV employee information.",
             employeeError,
@@ -148,24 +207,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Account Status:", authUser.status);
       console.log("Employee ID:", authUser.employee_id);
       console.log("HR-FCV Employee:", employee);
-
-      if (employee) {
-        console.log(
-          "Employee Name:",
-          [employee.first_name, employee.middle_name, employee.last_name]
-            .filter(Boolean)
-            .join(" "),
-        );
-
-        console.log("Employee Email:", employee.email);
-        console.log("Contact Number:", employee.contact_number);
-        console.log("Section:", employee.section?.name ?? "—");
-        console.log("Division:", employee.section?.division?.name ?? "—");
-        console.log("Employee Status:", employee.status);
-      } else {
-        console.log("No HR-FCV employee information was loaded.");
-      }
-
+      console.log("User Permissions:", userPermissions);
+      console.log(
+        "Permission Keys:",
+        userPermissions.map((permission) => permission.key),
+      );
       console.log("Complete Authenticated User:", authenticatedUser);
 
       console.groupEnd();
@@ -186,25 +232,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The Auth-FCV token is invalid or expired.
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth_user");
-
-        setUser(null);
-        setIsAuthenticated(false);
+        window.dispatchEvent(new Event("auth-token-changed"));
       } else {
-        /*
-        | Keep the token when the API is temporarily unavailable.
-        | AuthGuard can use isAuthenticated and isCheckingAuth
-        | to decide whether to render protected routes.
-        */
-
-        setUser(null);
-        setIsAuthenticated(false);
-
-        console.error("Failed to verify the authenticated user.", error);
+        console.error(
+          "Failed to verify the authenticated user or load permissions.",
+          error,
+        );
       }
+
+      setUser(null);
+      setPermissions([]);
+      setIsAuthenticated(false);
     } finally {
       setIsCheckingAuth(false);
     }
-  }, []);
+  }, [fetchPermissions]);
 
   /*
   |--------------------------------------------------------------------------
@@ -224,7 +266,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      // The Axios interceptor automatically attaches auth_token.
       await api.post("/api/auth/logout");
     } catch (error: unknown) {
       const err = error as {
@@ -241,14 +282,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message: err.message,
       });
     } finally {
-      // Clear local authentication regardless of API availability.
       localStorage.removeItem("auth_token");
       localStorage.removeItem("auth_user");
 
       window.dispatchEvent(new Event("auth-token-changed"));
 
-      // Clear the shared React authentication state.
       setUser(null);
+      setPermissions([]);
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
     }
@@ -264,6 +304,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        permissions,
+        hasPermission,
         isAuthenticated,
         isCheckingAuth,
         refreshAuth,

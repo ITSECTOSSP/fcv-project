@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Alert,
+  Avatar,
   Badge,
   Button,
   Divider,
@@ -30,87 +31,134 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 import { getEquipment } from "@/lib/api/inv-fcv/equipment";
-
 import { getEquipmentAssignments } from "@/lib/api/inv-fcv/equipment-assignment";
-
-import type { Equipment } from "@/types/inv-fcv/equipment";
-
-import type { EquipmentAssignment } from "@/types/inv-fcv/equipment-assignment";
-
-import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
-
+import { employeeApi } from "@/lib/api/hr-fcv/employee";
 import { getAttachmentTypes } from "@/lib/api/inv-fcv/attachment-types";
 
-import EquipmentAssignmentForm from "@/components/service/inv-fcv/assignment/equipment-assignment-form";
+import type { Equipment } from "@/types/inv-fcv/equipment";
+import type { EquipmentAssignment } from "@/types/inv-fcv/equipment-assignment";
+import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
+import type { Employee } from "@/types/hr-fcv/employee";
 
+import EquipmentAssignmentForm from "@/components/service/inv-fcv/assignment/equipment-assignment-form";
 import EquipmentTransferForm from "@/components/service/inv-fcv/assignment/equipment-transfer-form";
 
 export default function AssignEquipment() {
   const navigate = useNavigate();
-
   const { id } = useParams<{ id: string }>();
 
   const [equipment, setEquipment] = useState<Equipment | null>(null);
-
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState<string | null>(null);
 
-  /*
-   * New assignment modal.
-   */
   const [newAssignmentModalOpen, setNewAssignmentModalOpen] = useState(false);
 
-  /*
-   * Displayed assignments.
-   *
-   * Includes:
-   * - active
-   * - returned
-   * - disposed
-   *
-   * Transferred assignments are excluded
-   * from this list.
-   */
   const [assignments, setAssignments] = useState<EquipmentAssignment[]>([]);
-
-  /*
-   * Total quantity currently disposed.
-   */
   const [disposedQuantity, setDisposedQuantity] = useState(0);
-
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
-
   const [assignmentsError, setAssignmentsError] = useState<string | null>(null);
 
-  /*
-   * Selected assignment can be:
-   * - active
-   * - returned
-   * - disposed
-   *
-   * It is selected only to view its thread.
-   */
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<
     string | null
   >(null);
 
-  /*
-   * Complete assignment group history.
-   *
-   * This can contain transferred records because
-   * the thread needs the complete transfer chain.
-   */
   const [assignmentHistory, setAssignmentHistory] = useState<
     EquipmentAssignment[]
   >([]);
-
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+
+  const [attachmentTypes, setAttachmentTypes] = useState<AttachmentType[]>([]);
+  const [loadingAttachmentTypes, setLoadingAttachmentTypes] = useState(false);
+
+  /*
+   * Resolve an employee UUID to its HR employee record.
+   */
+  const employeeById = useMemo(() => {
+    return new Map(employees.map((employee) => [employee.id, employee]));
+  }, [employees]);
+
+  const getEmployee = useCallback(
+    (employeeId: string | null | undefined) => {
+      if (!employeeId) return undefined;
+      return employeeById.get(employeeId);
+    },
+    [employeeById],
+  );
+
+  const getEmployeeName = useCallback(
+    (employeeId: string | null | undefined) => {
+      const employee = getEmployee(employeeId);
+
+      if (!employee) {
+        return employeeId ? "Employee information unavailable" : "Not assigned";
+      }
+
+      return [employee.first_name, employee.middle_name, employee.last_name]
+        .filter(Boolean)
+        .join(" ");
+    },
+    [getEmployee],
+  );
+
+  /*
+   * Load employee records from the HR microservice.
+   *
+   * Fetch multiple pages if the HR API returns pagination.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEmployees = async () => {
+      try {
+        setEmployeesLoading(true);
+
+        const firstResponse = await employeeApi.index({ per_page: 100 });
+        const firstPage = firstResponse.data;
+
+        let allEmployees = [...(firstPage.data ?? [])];
+        const lastPage = Number(firstPage.last_page ?? 1);
+
+        for (let page = 2; page <= lastPage; page++) {
+          const pageResponse = await employeeApi.index({
+            per_page: 100,
+            page,
+          });
+
+          allEmployees = allEmployees.concat(pageResponse.data.data ?? []);
+        }
+
+        if (!cancelled) {
+          setEmployees(allEmployees);
+        }
+      } catch (err) {
+        console.error("Failed to load HR employees:", err);
+
+        if (!cancelled) {
+          setEmployees([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setEmployeesLoading(false);
+        }
+      }
+    };
+
+    loadEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /*
    * Load equipment.
    */
   useEffect(() => {
+    let cancelled = false;
+
     const loadEquipment = async () => {
       if (!id) {
         setError("Equipment ID is missing.");
@@ -124,34 +172,36 @@ export default function AssignEquipment() {
 
         const response = await getEquipment(id);
 
-        setEquipment(response.data);
-      } catch (error) {
-        console.error("Failed to load equipment:", error);
+        if (!cancelled) {
+          setEquipment(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to load equipment:", err);
 
-        setError("Unable to load the equipment.");
+        if (!cancelled) {
+          setError("Unable to load the equipment.");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadEquipment();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   /*
-   * Load assignments.
-   *
-   * Displayed statuses:
-   * - Active
-   * - Returned
-   * - Disposed
-   *
-   * Transferred assignments are intentionally
-   * excluded from this displayed list.
+   * Load displayed assignments.
    */
-  const loadAssignments = async (): Promise<EquipmentAssignment[]> => {
-    if (!id) {
-      return [];
-    }
+  const loadAssignments = useCallback(async (): Promise<
+    EquipmentAssignment[]
+  > => {
+    if (!id) return [];
 
     try {
       setAssignmentsLoading(true);
@@ -174,42 +224,30 @@ export default function AssignEquipment() {
         .reduce((sum, assignment) => sum + Number(assignment.quantity ?? 0), 0);
 
       setAssignments(displayedAssignments);
-
       setDisposedQuantity(disposedTotal);
 
       return displayedAssignments;
-    } catch (error) {
-      console.error("Failed to load equipment assignments:", error);
+    } catch (err) {
+      console.error("Failed to load equipment assignments:", err);
 
       setAssignmentsError("Unable to load the equipment assignments.");
-
       setAssignments([]);
-
       setDisposedQuantity(0);
 
       return [];
     } finally {
       setAssignmentsLoading(false);
     }
-  };
+  }, [id]);
 
-  /*
-   * Load assignments when equipment is available.
-   */
   useEffect(() => {
     if (equipment) {
-      loadAssignments();
+      void loadAssignments();
     }
-  }, [equipment]);
+  }, [equipment, loadAssignments]);
 
   /*
-   * Calculate inventory quantities.
-   *
-   * Available:
-   *
-   * Total
-   * - Currently Assigned
-   * - Disposed
+   * Inventory quantity summary.
    */
   const quantitySummary = useMemo(() => {
     const total = Number(equipment?.quantity ?? 0);
@@ -219,11 +257,9 @@ export default function AssignEquipment() {
       .reduce((sum, assignment) => sum + Number(assignment.quantity ?? 0), 0);
 
     const disposed = disposedQuantity;
-
     const available = Math.max(total - assigned - disposed, 0);
 
     let status = "Available";
-
     let statusColor = "green";
 
     if (available <= 0 && total > 0) {
@@ -244,29 +280,13 @@ export default function AssignEquipment() {
     };
   }, [equipment, assignments, disposedQuantity]);
 
-  /*
-   * Active assignments only.
-   *
-   * Used for:
-   * - Active quantity calculation
-   * - Finding the new active assignment after transfer
-   */
-  const activeAssignments = useMemo(() => {
-    return assignments.filter((assignment) => assignment.status === "active");
-  }, [assignments]);
+  const activeAssignments = useMemo(
+    () => assignments.filter((assignment) => assignment.status === "active"),
+    [assignments],
+  );
 
   /*
-   * Group displayed assignments by
-   * assignment_group_id.
-   *
-   * Transferred records are already excluded.
-   *
-   * Within each group:
-   * 1. Active
-   * 2. Returned / Disposed
-   *
-   * Then newest date first for the
-   * remaining records.
+   * Group assignments for display.
    */
   const groupedAssignments = useMemo(() => {
     const groups = new Map<string, EquipmentAssignment[]>();
@@ -274,100 +294,55 @@ export default function AssignEquipment() {
     assignments.forEach((assignment) => {
       const groupId = assignment.assignment_group_id;
 
-      if (!groups.has(groupId)) {
-        groups.set(groupId, []);
-      }
-
+      if (!groups.has(groupId)) groups.set(groupId, []);
       groups.get(groupId)!.push(assignment);
     });
 
     return Array.from(groups.entries())
       .map(([groupId, groupAssignments]) => {
         const sorted = [...groupAssignments].sort((a, b) => {
-          /*
-           * Active always comes first.
-           */
-          if (a.status === "active" && b.status !== "active") {
-            return -1;
-          }
+          if (a.status === "active" && b.status !== "active") return -1;
+          if (a.status !== "active" && b.status === "active") return 1;
 
-          if (a.status !== "active" && b.status === "active") {
-            return 1;
-          }
+          const dateDifference =
+            new Date(b.assigned_at).getTime() -
+            new Date(a.assigned_at).getTime();
 
-          /*
-           * Returned / disposed:
-           * newest assignment first.
-           */
-          const dateA = new Date(a.assigned_at).getTime();
+          if (dateDifference !== 0) return dateDifference;
 
-          const dateB = new Date(b.assigned_at).getTime();
-
-          if (dateA !== dateB) {
-            return dateB - dateA;
-          }
-
-          const createdA = new Date(a.created_at).getTime();
-
-          const createdB = new Date(b.created_at).getTime();
-
-          return createdB - createdA;
+          return (
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
         });
 
-        return {
-          groupId,
-          assignments: sorted,
-        };
+        return { groupId, assignments: sorted };
       })
       .sort((a, b) => {
-        /*
-         * Groups containing an active
-         * assignment come first.
-         */
         const aHasActive = a.assignments.some(
-          (assignment) => assignment.status === "active",
+          (item) => item.status === "active",
         );
-
         const bHasActive = b.assignments.some(
-          (assignment) => assignment.status === "active",
+          (item) => item.status === "active",
         );
 
-        if (aHasActive && !bHasActive) {
-          return -1;
-        }
+        if (aHasActive && !bHasActive) return -1;
+        if (!aHasActive && bHasActive) return 1;
 
-        if (!aHasActive && bHasActive) {
-          return 1;
-        }
-
-        /*
-         * Newest group first.
-         */
-        const aDate = new Date(a.assignments[0]?.assigned_at ?? 0).getTime();
-
-        const bDate = new Date(b.assignments[0]?.assigned_at ?? 0).getTime();
-
-        return bDate - aDate;
+        return (
+          new Date(b.assignments[0]?.assigned_at ?? 0).getTime() -
+          new Date(a.assignments[0]?.assigned_at ?? 0).getTime()
+        );
       });
   }, [assignments]);
 
   /*
-   * Load complete assignment history
-   * by assignment group.
-   *
-   * IMPORTANT:
-   * This does NOT filter transferred records.
-   *
-   * The displayed assignment list hides
-   * transferred records, but the thread itself
-   * needs the complete transfer chain.
+   * Load the complete transfer history for an assignment group.
    */
   const loadAssignmentHistory = async (
     assignment: EquipmentAssignment,
   ): Promise<EquipmentAssignment[]> => {
     try {
       setHistoryLoading(true);
-
       setAssignmentsError(null);
 
       const response = await getEquipmentAssignments({
@@ -376,13 +351,11 @@ export default function AssignEquipment() {
       });
 
       setAssignmentHistory(response.data);
-
       return response.data;
-    } catch (error) {
-      console.error("Failed to load assignment history:", error);
+    } catch (err) {
+      console.error("Failed to load assignment history:", err);
 
       setAssignmentHistory([]);
-
       setAssignmentsError("Unable to load the assignment history.");
 
       return [];
@@ -391,22 +364,32 @@ export default function AssignEquipment() {
     }
   };
 
-  /*
-   * New assignment success.
-   */
+  const selectedAssignment =
+    assignments.find((assignment) => assignment.id === selectedAssignmentId) ??
+    null;
+
+  const handleSelectAssignment = async (assignment: EquipmentAssignment) => {
+    if (assignment.id === selectedAssignmentId) return;
+
+    setSelectedAssignmentId(assignment.id);
+    setAssignmentHistory([]);
+
+    await loadAssignmentHistory(assignment);
+  };
+
+  const clearTransferSelection = () => {
+    setSelectedAssignmentId(null);
+    setAssignmentHistory([]);
+    setAssignmentsError(null);
+  };
+
   const handleNewAssignmentSuccess = async () => {
     setNewAssignmentModalOpen(false);
-
     await loadAssignments();
   };
 
-  /*
-   * Transfer success.
-   */
   const handleTransferSuccess = async () => {
-    if (!selectedAssignmentId) {
-      return;
-    }
+    if (!selectedAssignmentId) return;
 
     const previousAssignment = activeAssignments.find(
       (item) => item.id === selectedAssignmentId,
@@ -414,100 +397,31 @@ export default function AssignEquipment() {
 
     const previousGroupId = previousAssignment?.assignment_group_id;
 
-    if (!previousGroupId) {
+    if (!previousGroupId) return;
+
+    const refreshedAssignments = await loadAssignments();
+
+    const newActiveAssignment = refreshedAssignments.find(
+      (item) =>
+        item.assignment_group_id === previousGroupId &&
+        item.status === "active",
+    );
+
+    if (!newActiveAssignment) {
+      setSelectedAssignmentId(null);
+      setAssignmentHistory([]);
       return;
     }
 
-    try {
-      const refreshedAssignments = await loadAssignments();
-
-      /*
-       * Find the newly-created active
-       * assignment in the same group.
-       */
-      const newActiveAssignment = refreshedAssignments.find(
-        (item) =>
-          item.assignment_group_id === previousGroupId &&
-          item.status === "active",
-      );
-
-      if (!newActiveAssignment) {
-        setSelectedAssignmentId(null);
-
-        setAssignmentHistory([]);
-
-        return;
-      }
-
-      /*
-       * Select the new active assignment.
-       */
-      setSelectedAssignmentId(newActiveAssignment.id);
-
-      /*
-       * Reload complete transfer thread.
-       */
-      await loadAssignmentHistory(newActiveAssignment);
-    } catch (error) {
-      console.error("Failed to refresh assignment after transfer:", error);
-    }
+    setSelectedAssignmentId(newActiveAssignment.id);
+    await loadAssignmentHistory(newActiveAssignment);
   };
 
-  /*
-   * Currently selected assignment.
-   *
-   * Can be Active, Returned, or Disposed.
-   */
-  const selectedAssignment =
-    assignments.find((assignment) => assignment.id === selectedAssignmentId) ??
-    null;
-
-  /*
-   * Select an assignment to view its
-   * complete assignment thread.
-   *
-   * Active, Returned, and Disposed
-   * are all selectable.
-   */
-  const handleSelectAssignment = async (assignment: EquipmentAssignment) => {
-    if (assignment.id === selectedAssignmentId) {
-      return;
-    }
-
-    setSelectedAssignmentId(assignment.id);
-
-    setAssignmentHistory([]);
-
-    await loadAssignmentHistory(assignment);
-  };
-
-  /*
-   * Reset selection.
-   */
-  const clearTransferSelection = () => {
-    setSelectedAssignmentId(null);
-
-    setAssignmentHistory([]);
-
-    setAssignmentsError(null);
-  };
-
-  /*
-   * Date formatting.
-   *
-   * Assignment dates are displayed
-   * using Philippine time.
-   */
   const formatDate = (value: string | null | undefined) => {
-    if (!value) {
-      return "—";
-    }
+    if (!value) return "—";
 
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
+    if (Number.isNaN(date.getTime())) return value;
 
     return date.toLocaleDateString("en-US", {
       timeZone: "Asia/Manila",
@@ -518,30 +432,34 @@ export default function AssignEquipment() {
   };
 
   /*
-   * Load Attachment Types.
+   * Load attachment types.
    */
-  const [attachmentTypes, setAttachmentTypes] = useState<AttachmentType[]>([]);
-
-  const [loadingAttachmentTypes, setLoadingAttachmentTypes] = useState(false);
-
   useEffect(() => {
-    const loadAttachmentTypes = async () => {
+    let cancelled = false;
+
+    const loadTypes = async () => {
       try {
         setLoadingAttachmentTypes(true);
 
         const response = await getAttachmentTypes();
 
-        setAttachmentTypes(response.data);
-      } catch (error) {
-        console.error("Failed to load attachment types:", error);
+        if (!cancelled) {
+          setAttachmentTypes(response.data);
+        }
+      } catch (err) {
+        console.error("Failed to load attachment types:", err);
 
-        setAttachmentTypes([]);
+        if (!cancelled) setAttachmentTypes([]);
       } finally {
-        setLoadingAttachmentTypes(false);
+        if (!cancelled) setLoadingAttachmentTypes(false);
       }
     };
 
-    loadAttachmentTypes();
+    loadTypes();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
@@ -556,10 +474,8 @@ export default function AssignEquipment() {
           <Stack gap="md">
             <Group>
               <Skeleton height={44} width={44} radius="md" />
-
               <Stack gap={6}>
                 <Skeleton height={20} width={240} />
-
                 <Skeleton height={14} width={160} />
               </Stack>
             </Group>
@@ -580,9 +496,6 @@ export default function AssignEquipment() {
     );
   }
 
-  /*
-   * Error state.
-   */
   if (error || !equipment) {
     return (
       <Stack gap="md">
@@ -605,10 +518,74 @@ export default function AssignEquipment() {
     );
   }
 
+  const renderEmployee = (employeeId: string | null | undefined) => {
+    const employee = getEmployee(employeeId);
+
+    if (!employee) {
+      return (
+        <Group gap="sm" wrap="nowrap">
+          <Avatar color="gray" radius="xl" size="md">
+            <UserRoundCog size={16} />
+          </Avatar>
+          <Stack gap={2}>
+            <Text size="sm" fw={500}>
+              {employeeId ? "Employee information unavailable" : "Unassigned"}
+            </Text>
+            {employeeId && (
+              <Text size="xs" c="dimmed">
+                ID: {employeeId}
+              </Text>
+            )}
+          </Stack>
+        </Group>
+      );
+    }
+
+    const employeeName = [
+      employee.first_name,
+      employee.middle_name,
+      employee.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const sectionName = employee.section?.name ?? "No section assigned";
+    const divisionName =
+      employee.section?.division?.name ?? "No division assigned";
+
+    return (
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <Avatar color="blue" radius="xl" size="md">
+          {`${employee.first_name?.[0] ?? ""}${employee.last_name?.[0] ?? ""}`}
+        </Avatar>
+
+        <Stack gap={4} style={{ minWidth: 0 }}>
+          <Text size="sm" fw={600} style={{ overflowWrap: "anywhere" }}>
+            {employeeName}
+          </Text>
+
+          <Text size="xs" c="dimmed" style={{ overflowWrap: "anywhere" }}>
+            {employee.email}
+          </Text>
+
+          <Group gap={6} wrap="wrap">
+            <Badge variant="light" color="blue" size="sm">
+              Section: {sectionName}
+            </Badge>
+
+            <Badge variant="light" color="grape" size="sm">
+              Division: {divisionName}
+            </Badge>
+          </Group>
+        </Stack>
+      </Group>
+    );
+  };
+
   return (
     <>
       <Stack gap="lg">
-        {/* Header */}
+        {/* Page header */}
         <Group justify="space-between" align="flex-start">
           <div>
             <Text size="xl" fw={700}>
@@ -628,6 +605,7 @@ export default function AssignEquipment() {
             >
               New Assignment
             </Button>
+
             <Button
               variant="default"
               leftSection={<ArrowLeft size={17} />}
@@ -637,10 +615,10 @@ export default function AssignEquipment() {
             </Button>
           </Group>
         </Group>
-        {/* Equipment Information */}
+
+        {/* Equipment information */}
         <Paper withBorder p="md" radius="md">
           <Stack gap="md">
-            {/* Equipment Header */}
             <Group justify="space-between" align="center" wrap="nowrap">
               <Group gap="sm" wrap="nowrap">
                 <ThemeIcon size={40} radius="md" variant="light" color="gray">
@@ -656,11 +634,9 @@ export default function AssignEquipment() {
                     <Text size="xs" c="dimmed">
                       {equipment.equipment_type?.name ?? "Equipment"}
                     </Text>
-
                     <Text size="xs" c="dimmed">
                       •
                     </Text>
-
                     <Text size="xs" c="dimmed">
                       Property No. {equipment.property_number}
                     </Text>
@@ -668,31 +644,28 @@ export default function AssignEquipment() {
                 </div>
               </Group>
 
-              <Group gap="xs" wrap="nowrap">
-                {!assignmentsLoading && (
-                  <>
-                    <Badge
-                      color={quantitySummary.statusColor}
-                      variant="light"
-                      size="sm"
-                      leftSection={<CheckCircle2 size={12} />}
-                    >
-                      {quantitySummary.status}
-                    </Badge>
+              {!assignmentsLoading && (
+                <Group gap="xs" wrap="nowrap">
+                  <Badge
+                    color={quantitySummary.statusColor}
+                    variant="light"
+                    size="sm"
+                    leftSection={<CheckCircle2 size={12} />}
+                  >
+                    {quantitySummary.status}
+                  </Badge>
 
-                    {quantitySummary.disposed > 0 && (
-                      <Badge color="red" variant="light" size="sm">
-                        Disposed: {quantitySummary.disposed}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </Group>
+                  {quantitySummary.disposed > 0 && (
+                    <Badge color="red" variant="light" size="sm">
+                      Disposed: {quantitySummary.disposed}
+                    </Badge>
+                  )}
+                </Group>
+              )}
             </Group>
 
             <Divider />
 
-            {/* Equipment Identifiers */}
             <Group gap="xl" wrap="wrap">
               <div>
                 <Text size="xs" c="dimmed">
@@ -722,128 +695,82 @@ export default function AssignEquipment() {
               </div>
             </Group>
 
-            {/* Quantity Summary */}
             <div>
               <Group justify="space-between" align="center" mb="xs">
                 <Text size="sm" fw={600}>
                   Quantity & Availability
                 </Text>
-
                 <Text size="xs" c="dimmed">
                   Current inventory allocation
                 </Text>
               </Group>
 
               <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
-                {/* Total */}
-                <Paper
-                  withBorder
-                  p="sm"
-                  radius="sm"
-                  style={{
-                    borderLeft: "3px solid var(--mantine-color-gray-5)",
-                  }}
-                >
-                  <Text size="xs" c="dimmed">
-                    Total
-                  </Text>
-
-                  {assignmentsLoading ? (
-                    <Skeleton height={24} width={45} mt={4} />
-                  ) : (
-                    <Text size="lg" fw={700} mt={2}>
-                      {quantitySummary.total}
+                {[
+                  {
+                    label: "Total",
+                    value: quantitySummary.total,
+                    description: "Units",
+                    color: "gray",
+                  },
+                  {
+                    label: "Assigned",
+                    value: quantitySummary.assigned,
+                    description: "Currently assigned",
+                    color: "orange",
+                  },
+                  {
+                    label: "Disposed",
+                    value: quantitySummary.disposed,
+                    description: "Permanently disposed",
+                    color: "red",
+                  },
+                  {
+                    label: "Available",
+                    value: quantitySummary.available,
+                    description: "Available for assignment",
+                    color: "green",
+                  },
+                ].map((item) => (
+                  <Paper
+                    key={item.label}
+                    withBorder
+                    p="sm"
+                    radius="sm"
+                    style={{
+                      borderLeft: `3px solid var(--mantine-color-${item.color}-5)`,
+                    }}
+                  >
+                    <Text size="xs" c="dimmed">
+                      {item.label}
                     </Text>
-                  )}
 
-                  <Text size="xs" c="dimmed">
-                    Units
-                  </Text>
-                </Paper>
+                    {assignmentsLoading ? (
+                      <Skeleton height={24} width={45} mt={4} />
+                    ) : (
+                      <Text
+                        size="lg"
+                        fw={700}
+                        mt={2}
+                        c={
+                          item.color === "gray" ? undefined : `${item.color}.7`
+                        }
+                      >
+                        {item.value}
+                      </Text>
+                    )}
 
-                {/* Assigned */}
-                <Paper
-                  withBorder
-                  p="sm"
-                  radius="sm"
-                  style={{
-                    borderLeft: "3px solid var(--mantine-color-orange-5)",
-                  }}
-                >
-                  <Text size="xs" c="dimmed">
-                    Assigned
-                  </Text>
-
-                  {assignmentsLoading ? (
-                    <Skeleton height={24} width={45} mt={4} />
-                  ) : (
-                    <Text size="lg" fw={700} c="orange.7" mt={2}>
-                      {quantitySummary.assigned}
+                    <Text size="xs" c="dimmed">
+                      {item.description}
                     </Text>
-                  )}
-
-                  <Text size="xs" c="dimmed">
-                    Currently assigned
-                  </Text>
-                </Paper>
-
-                {/* Disposed */}
-                <Paper
-                  withBorder
-                  p="sm"
-                  radius="sm"
-                  style={{
-                    borderLeft: "3px solid var(--mantine-color-red-5)",
-                  }}
-                >
-                  <Text size="xs" c="dimmed">
-                    Disposed
-                  </Text>
-
-                  {assignmentsLoading ? (
-                    <Skeleton height={24} width={45} mt={4} />
-                  ) : (
-                    <Text size="lg" fw={700} c="red.7" mt={2}>
-                      {quantitySummary.disposed}
-                    </Text>
-                  )}
-
-                  <Text size="xs" c="dimmed">
-                    Permanently disposed
-                  </Text>
-                </Paper>
-
-                {/* Available */}
-                <Paper
-                  withBorder
-                  p="sm"
-                  radius="sm"
-                  style={{
-                    borderLeft: "3px solid var(--mantine-color-green-5)",
-                  }}
-                >
-                  <Text size="xs" c="dimmed">
-                    Available
-                  </Text>
-
-                  {assignmentsLoading ? (
-                    <Skeleton height={24} width={45} mt={4} />
-                  ) : (
-                    <Text size="lg" fw={700} c="green.7" mt={2}>
-                      {quantitySummary.available}
-                    </Text>
-                  )}
-
-                  <Text size="xs" c="dimmed">
-                    Available for assignment
-                  </Text>
-                </Paper>
+                  </Paper>
+                ))}
               </SimpleGrid>
             </div>
           </Stack>
         </Paper>
 
-        {/* Assignment History */}
+        {/* Assignment history */}
         <Stack gap="md">
           {assignmentsError && (
             <Alert
@@ -860,17 +787,23 @@ export default function AssignEquipment() {
               <div>
                 <Group gap="xs">
                   <ArrowLeftRight size={18} />
-
                   <Text fw={600}>Assignment History</Text>
                 </Group>
 
                 <Text size="sm" c="dimmed" mt={3}>
-                  View active, returned, and disposed assignments. Select any
-                  assignment to view its assignment thread.
+                  View active, returned, and disposed assignments. Select an
+                  assignment to view its complete assignment thread.
                 </Text>
               </div>
 
-              <Badge variant="light">{groupedAssignments.length} groups</Badge>
+              <Group gap="xs">
+                {employeesLoading && (
+                  <Badge variant="light">Loading employees…</Badge>
+                )}
+                <Badge variant="light">
+                  {groupedAssignments.length} groups
+                </Badge>
+              </Group>
             </Group>
 
             <Divider my="md" />
@@ -900,26 +833,14 @@ export default function AssignEquipment() {
                             assignment.id === selectedAssignmentId;
 
                           const statusConfig = {
-                            active: {
-                              label: "Active",
-                              color: "green",
-                            },
-                            returned: {
-                              label: "Returned",
-                              color: "blue",
-                            },
-                            disposed: {
-                              label: "Disposed",
-                              color: "red",
-                            },
+                            active: { label: "Active", color: "green" },
+                            returned: { label: "Returned", color: "blue" },
+                            disposed: { label: "Disposed", color: "red" },
                           } as const;
 
                           const status =
                             statusConfig[
-                              assignment.status as
-                                | "active"
-                                | "returned"
-                                | "disposed"
+                              assignment.status as keyof typeof statusConfig
                             ];
 
                           return (
@@ -936,6 +857,9 @@ export default function AssignEquipment() {
                                 withBorder
                                 p="md"
                                 radius="md"
+                                onClick={() =>
+                                  void handleSelectAssignment(assignment)
+                                }
                                 style={{
                                   position: "relative",
                                   cursor: "pointer",
@@ -952,73 +876,39 @@ export default function AssignEquipment() {
                                     ? "var(--mantine-shadow-sm)"
                                     : undefined,
                                 }}
-                                onClick={() =>
-                                  handleSelectAssignment(assignment)
-                                }
                               >
                                 <Stack gap="sm">
-                                  {/* Header */}
+                                  {/* Assigned employee */}
                                   <Group
                                     justify="space-between"
                                     align="flex-start"
                                     wrap="nowrap"
                                   >
-                                    <Group
-                                      gap="sm"
-                                      align="flex-start"
-                                      wrap="nowrap"
-                                      style={{
-                                        minWidth: 0,
-                                        flex: 1,
-                                      }}
-                                    >
-                                      <ThemeIcon
-                                        size={38}
-                                        radius="md"
-                                        variant={selected ? "filled" : "light"}
-                                        color={selected ? "blue" : "gray"}
-                                      >
-                                        <UserRoundCog size={18} />
-                                      </ThemeIcon>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                      {renderEmployee(
+                                        assignment.user_employee_id,
+                                      )}
 
-                                      <Stack
-                                        gap={2}
-                                        style={{
-                                          minWidth: 0,
-                                          flex: 1,
-                                        }}
-                                      >
-                                        <Text
-                                          fw={700}
-                                          size="sm"
-                                          style={{
-                                            wordBreak: "break-all",
-                                          }}
+                                      <Group gap="xs" mt="xs">
+                                        <Badge
+                                          size="xs"
+                                          color={status.color}
+                                          variant="light"
                                         >
-                                          {assignment.user_employee_id}
-                                        </Text>
+                                          {status.label}
+                                        </Badge>
 
-                                        <Group gap="xs">
+                                        {assignment.is_care_of && (
                                           <Badge
                                             size="xs"
-                                            color={status.color}
+                                            color="blue"
                                             variant="light"
                                           >
-                                            {status.label}
+                                            Care Of
                                           </Badge>
-
-                                          {assignment.is_care_of && (
-                                            <Badge
-                                              size="xs"
-                                              color="blue"
-                                              variant="light"
-                                            >
-                                              Care Of
-                                            </Badge>
-                                          )}
-                                        </Group>
-                                      </Stack>
-                                    </Group>
+                                        )}
+                                      </Group>
+                                    </div>
 
                                     {selected && (
                                       <Badge
@@ -1032,44 +922,27 @@ export default function AssignEquipment() {
                                     )}
                                   </Group>
 
-                                  {/* Care Of */}
+                                  {/* Care-of employee */}
                                   {assignment.is_care_of && (
                                     <Paper
                                       withBorder
                                       radius="sm"
-                                      p="xs"
+                                      p="sm"
                                       bg="var(--mantine-color-gray-0)"
                                     >
-                                      <Group gap="xs">
-                                        <UserRoundCog
-                                          size={14}
-                                          style={{
-                                            color:
-                                              "var(--mantine-color-dimmed)",
-                                          }}
-                                        />
+                                      <Text size="xs" c="dimmed" mb="xs">
+                                        Care-of employee
+                                      </Text>
 
-                                        <Text size="xs" c="dimmed">
-                                          Care Of
-                                        </Text>
-
-                                        <Text
-                                          size="xs"
-                                          fw={600}
-                                          style={{
-                                            wordBreak: "break-all",
-                                          }}
-                                        >
-                                          {assignment.care_of_employee_id ??
-                                            "N/A"}
-                                        </Text>
-                                      </Group>
+                                      {renderEmployee(
+                                        assignment.care_of_employee_id,
+                                      )}
                                     </Paper>
                                   )}
 
                                   <Divider />
 
-                                  {/* Assignment Metadata */}
+                                  {/* Assignment metadata */}
                                   <Group gap="xl" wrap="wrap">
                                     <Group gap="xs">
                                       <ThemeIcon
@@ -1085,7 +958,6 @@ export default function AssignEquipment() {
                                         <Text size="xs" c="dimmed">
                                           Date Assigned
                                         </Text>
-
                                         <Text size="xs" fw={600} mt={1}>
                                           {formatDate(assignment.assigned_at)}
                                         </Text>
@@ -1106,7 +978,6 @@ export default function AssignEquipment() {
                                         <Text size="xs" c="dimmed">
                                           Quantity
                                         </Text>
-
                                         <Text size="xs" fw={600} mt={1}>
                                           {assignment.quantity}
                                         </Text>
@@ -1117,15 +988,7 @@ export default function AssignEquipment() {
                                       <Text size="xs" c="dimmed">
                                         Property Number
                                       </Text>
-
-                                      <Text
-                                        size="xs"
-                                        fw={600}
-                                        mt={1}
-                                        style={{
-                                          wordBreak: "break-all",
-                                        }}
-                                      >
+                                      <Text size="xs" fw={600} mt={1}>
                                         {assignment.property_number}
                                       </Text>
                                     </div>
@@ -1135,7 +998,6 @@ export default function AssignEquipment() {
                                         <Text size="xs" c="dimmed">
                                           End Date
                                         </Text>
-
                                         <Text size="xs" fw={600} mt={1}>
                                           {formatDate(assignment.returned_at)}
                                         </Text>
@@ -1155,38 +1017,32 @@ export default function AssignEquipment() {
             )}
           </Paper>
 
-          {/* Assignment Thread */}
-          {selectedAssignment && (
-            <>
-              {historyLoading ? (
-                <Paper withBorder p="md" radius="md">
-                  <Stack gap="md">
-                    <Skeleton height={28} width={220} />
-
-                    <Skeleton height={80} />
-
-                    <Skeleton height={80} />
-
-                    <Skeleton height={250} />
-                  </Stack>
-                </Paper>
-              ) : (
-                <EquipmentTransferForm
-                  equipment={equipment}
-                  assignment={selectedAssignment}
-                  assignmentHistory={assignmentHistory}
-                  attachmentTypes={attachmentTypes}
-                  loadingAttachmentTypes={loadingAttachmentTypes}
-                  onSuccess={handleTransferSuccess}
-                  onCancel={clearTransferSelection}
-                />
-              )}
-            </>
-          )}
+          {/* Selected assignment thread */}
+          {selectedAssignment &&
+            (historyLoading ? (
+              <Paper withBorder p="md" radius="md">
+                <Stack gap="md">
+                  <Skeleton height={28} width={220} />
+                  <Skeleton height={80} />
+                  <Skeleton height={80} />
+                  <Skeleton height={250} />
+                </Stack>
+              </Paper>
+            ) : (
+              <EquipmentTransferForm
+                equipment={equipment}
+                assignment={selectedAssignment}
+                assignmentHistory={assignmentHistory}
+                attachmentTypes={attachmentTypes}
+                loadingAttachmentTypes={loadingAttachmentTypes}
+                onSuccess={handleTransferSuccess}
+                onCancel={clearTransferSelection}
+              />
+            ))}
         </Stack>
       </Stack>
 
-      {/* New Assignment Modal */}
+      {/* New assignment modal */}
       <Modal
         opened={newAssignmentModalOpen}
         onClose={() => setNewAssignmentModalOpen(false)}
@@ -1198,7 +1054,6 @@ export default function AssignEquipment() {
 
             <div>
               <Text fw={700}>New Assignment</Text>
-
               <Text size="xs" c="dimmed">
                 Assign available equipment to an employee.
               </Text>
@@ -1207,10 +1062,7 @@ export default function AssignEquipment() {
         }
         size="lg"
         centered
-        overlayProps={{
-          backgroundOpacity: 0.55,
-          blur: 3,
-        }}
+        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
         closeOnClickOutside={false}
       >
         <EquipmentAssignmentForm

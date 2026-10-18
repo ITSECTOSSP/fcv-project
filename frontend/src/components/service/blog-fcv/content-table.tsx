@@ -190,10 +190,10 @@ export default function ContentsDataTable({
     applyFilters("", "all", "all");
   };
 
-  const [pendingDelete, setPendingDelete] = useState<{
-    id: number;
-    title: string;
-  } | null>(null);
+  // const [pendingDelete, setPendingDelete] = useState<{
+  //   id: number;
+  //   title: string;
+  // } | null>(null);
 
   const [contentToDelete, setContentToDelete] = useState<{
     id: number;

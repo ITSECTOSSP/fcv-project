@@ -30,6 +30,9 @@ import UserManagement from "./pages/services/admin/users/dashboard";
 import CreateUser from "./pages/services/admin/users/create-user";
 import EditUser from "./pages/services/admin/users/edit-user";
 import UserPermissions from "./pages/services/admin/permission/user-permission";
+import UserView from "./pages/services/admin/users/view-user";
+
+import MyProfilePage from "./pages/auth/profile";
 
 import InventoryDashboard from "./pages/services/inv-fcv/dashboard";
 import Equipments from "./pages/services/inv-fcv/equipment/equipment-dashboard";
@@ -87,6 +90,7 @@ export default function App() {
                   path="/admin/user-permissions/:id"
                   element={<UserPermissions />}
                 />
+                <Route path="/admin/view-user/:id" element={<UserView />} />
 
                 {/* Inventory */}
                 <Route
@@ -128,14 +132,9 @@ export default function App() {
                 {/* Blog */}
                 <Route path="/blog-dashboard" element={<BlogPostDashboard />} />
                 <Route path="/blog/contents" element={<ContentsPage />} />
-                <Route
-                  path="/blog/create-content"
-                  element={<CreateContentPage />}
-                />
-                <Route
-                  path="/blog/edit-content/:id"
-                  element={<EditContentPage />}
-                />
+                <Route path="/blog/create-content" element={<CreateContentPage />}/>
+                <Route path="/blog/edit-content/:id" element={<EditContentPage />}/>
+                <Route path="/profile" element={<MyProfilePage />} />
               </Route>
             </Route>
 

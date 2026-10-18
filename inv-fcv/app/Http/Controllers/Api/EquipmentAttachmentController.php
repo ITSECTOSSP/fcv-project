@@ -6,22 +6,42 @@ use App\Http\Controllers\Controller;
 use App\Models\Equipment;
 use App\Models\EquipmentAssignment;
 use App\Models\EquipmentAttachment;
+use App\Services\AuditLogService;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class EquipmentAttachmentController extends Controller
 {
-    /*
-     * =====================================================
-     *       DISPLAY ATTACHMENTS FOR AN EQUIPMENT
-     * =====================================================
+    /**
+     * Fields to include in audit snapshots.
+     */
+    private function auditValues(
+        EquipmentAttachment $attachment
+    ): array {
+        return $attachment->only([
+            'equipment_id',
+            'equipment_assignment_id',
+            'attachment_type_id',
+            'name',
+            'file_path',
+            'file_name',
+            'mime_type',
+            'file_size',
+            'description',
+            'encoded_by',
+            'updated_by',
+        ]);
+    }
+
+    /**
+     * Display attachments for an equipment.
      */
     public function index(
         Equipment $equipment
     ): JsonResponse {
-
         $attachments = $equipment
             ->attachments()
             ->with([
@@ -34,88 +54,65 @@ class EquipmentAttachmentController extends Controller
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
 
-        $attachments->each(
-            function (
-                EquipmentAttachment $attachment
-            ) use ($disk) {
-
-                $attachment->file_url = $disk->url(
-                    $attachment->file_path
-                );
-            }
-        );
+        $attachments->each(function (
+            EquipmentAttachment $attachment
+        ) use ($disk) {
+            $attachment->file_url = $disk->url(
+                $attachment->file_path
+            );
+        });
 
         return response()->json([
             'data' => $attachments,
         ]);
     }
 
-
-    /*
-     * =====================================================
-     *       STORE A NEW EQUIPMENT ATTACHMENT
-     * =====================================================
+    /**
+     * Store a new equipment attachment.
      */
     public function store(
         Request $request,
-        Equipment $equipment
+        Equipment $equipment,
+        AuditLogService $auditLog
     ): JsonResponse {
-
         $validated = $request->validate([
             'equipment_id' => [
                 'required',
                 'uuid',
                 'exists:equipments,id',
             ],
-
             'equipment_assignment_id' => [
                 'nullable',
                 'uuid',
                 'exists:equipment_assignments,id',
             ],
-
             'attachment_type_id' => [
                 'required',
                 'uuid',
                 'exists:attachment_types,id',
             ],
-
             'name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'file' => [
                 'required',
                 'file',
                 'max:20480',
             ],
-
             'description' => [
                 'nullable',
                 'string',
             ],
         ]);
 
-        /*
-         * =====================================================
-         *       VERIFY EQUIPMENT
-         * =====================================================
-         */
-
         if ($validated['equipment_id'] !== $equipment->id) {
             return response()->json([
                 'message' =>
-                'The specified equipment does not match the equipment route.',
+                    'The specified equipment does not match the equipment route.',
             ], 422);
         }
-
-        /*
-         * =====================================================
-         *       GET AUTHENTICATED USER
-         * =====================================================
-         */
 
         $authUserId = $request->attributes->get(
             'auth_user_id'
@@ -124,20 +121,13 @@ class EquipmentAttachmentController extends Controller
         if (!$authUserId) {
             return response()->json([
                 'message' =>
-                'Authenticated user could not be identified.',
+                    'Authenticated user could not be identified.',
             ], 401);
         }
-
-        /*
-         * =====================================================
-         *       VERIFY EQUIPMENT ASSIGNMENT
-         * =====================================================
-         */
 
         $assignment = null;
 
         if (!empty($validated['equipment_assignment_id'])) {
-
             $assignment = EquipmentAssignment::query()
                 ->where(
                     'id',
@@ -152,16 +142,10 @@ class EquipmentAttachmentController extends Controller
             if (!$assignment) {
                 return response()->json([
                     'message' =>
-                    'The specified equipment assignment does not belong to the specified equipment.',
+                        'The specified equipment assignment does not belong to the specified equipment.',
                 ], 422);
             }
         }
-
-        /*
-         * =====================================================
-         *       STORE FILE
-         * =====================================================
-         */
 
         $file = $request->file('file');
 
@@ -170,63 +154,41 @@ class EquipmentAttachmentController extends Controller
             'public'
         );
 
-        /*
-         * =====================================================
-         *       CREATE ATTACHMENT
-         * =====================================================
-         */
+        try {
+            $attachment = EquipmentAttachment::create([
+                'equipment_id' => $validated['equipment_id'],
+                'equipment_assignment_id' => $assignment?->id,
+                'attachment_type_id' => $validated['attachment_type_id'],
+                'name' => $validated['name'],
+                'file_path' => $filePath,
+                'file_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'description' => $validated['description'] ?? null,
+                'encoded_by' => $authUserId,
+                'updated_by' => $authUserId,
+            ]);
+        } catch (Throwable $exception) {
+            Storage::disk('public')->delete($filePath);
 
-        $attachment = EquipmentAttachment::create([
-            'equipment_id' =>
-            $validated['equipment_id'],
-
-            'equipment_assignment_id' =>
-            $assignment?->id,
-
-            'attachment_type_id' =>
-            $validated['attachment_type_id'],
-
-            'name' =>
-            $validated['name'],
-
-            'file_path' =>
-            $filePath,
-
-            'file_name' =>
-            $file->getClientOriginalName(),
-
-            'mime_type' =>
-            $file->getMimeType(),
-
-            'file_size' =>
-            $file->getSize(),
-
-            'description' =>
-            $validated['description'] ?? null,
-
-            /*
-             * =====================================================
-             *       AUDIT INFORMATION
-             * =====================================================
-             */
-
-            'encoded_by' =>
-            $authUserId,
-
-            'updated_by' =>
-            $authUserId,
-        ]);
-
-        /*
-         * =====================================================
-         *       LOAD RELATIONSHIPS
-         * =====================================================
-         */
+            throw $exception;
+        }
 
         $attachment->load([
             'attachmentType',
             'equipmentAssignment',
         ]);
+
+        $auditLog->record(
+            $request,
+            'CREATE',
+            'equipment_attachment',
+            (string) $attachment->getKey(),
+            'Uploaded equipment attachment: '
+                . $attachment->name,
+            null,
+            $this->auditValues($attachment)
+        );
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
@@ -237,23 +199,17 @@ class EquipmentAttachmentController extends Controller
 
         return response()->json([
             'message' =>
-            'Equipment attachment uploaded successfully.',
-
-            'data' =>
-            $attachment,
+                'Equipment attachment uploaded successfully.',
+            'data' => $attachment,
         ], 201);
     }
 
-
-    /*
-     * =====================================================
-     *       DISPLAY ATTACHMENTS FOR AN ASSIGNMENT
-     * =====================================================
+    /**
+     * Display attachments for an assignment.
      */
     public function assignmentIndex(
         EquipmentAssignment $equipmentAssignment
     ): JsonResponse {
-
         $attachments = $equipmentAssignment
             ->attachments()
             ->with([
@@ -266,81 +222,58 @@ class EquipmentAttachmentController extends Controller
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
 
-        $attachments->each(
-            function (
-                EquipmentAttachment $attachment
-            ) use ($disk) {
-
-                $attachment->file_url = $disk->url(
-                    $attachment->file_path
-                );
-            }
-        );
+        $attachments->each(function (
+            EquipmentAttachment $attachment
+        ) use ($disk) {
+            $attachment->file_url = $disk->url(
+                $attachment->file_path
+            );
+        });
 
         return response()->json([
             'data' => $attachments,
         ]);
     }
 
-
-    /*
-     * =====================================================
-     *       STORE A NEW ASSIGNMENT ATTACHMENT
-     * =====================================================
+    /**
+     * Store a new assignment attachment.
      */
     public function assignmentStore(
         Request $request,
-        EquipmentAssignment $equipmentAssignment
+        EquipmentAssignment $equipmentAssignment,
+        AuditLogService $auditLog
     ): JsonResponse {
-
-        /*
-         * =====================================================
-         *       VALIDATE REQUEST
-         * =====================================================
-         */
-
         $validated = $request->validate([
             'equipment_id' => [
                 'required',
                 'uuid',
                 'exists:equipments,id',
             ],
-
             'equipment_assignment_id' => [
                 'required',
                 'uuid',
                 'exists:equipment_assignments,id',
             ],
-
             'attachment_type_id' => [
                 'required',
                 'uuid',
                 'exists:attachment_types,id',
             ],
-
             'name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'file' => [
                 'required',
                 'file',
                 'max:20480',
             ],
-
             'description' => [
                 'nullable',
                 'string',
             ],
         ]);
-
-        /*
-         * =====================================================
-         *       VERIFY ASSIGNMENT
-         * =====================================================
-         */
 
         if (
             $validated['equipment_assignment_id']
@@ -348,15 +281,9 @@ class EquipmentAttachmentController extends Controller
         ) {
             return response()->json([
                 'message' =>
-                'The specified equipment assignment does not match the assignment route.',
+                    'The specified equipment assignment does not match the assignment route.',
             ], 422);
         }
-
-        /*
-         * =====================================================
-         *       VERIFY EQUIPMENT
-         * =====================================================
-         */
 
         if (
             $validated['equipment_id']
@@ -364,15 +291,9 @@ class EquipmentAttachmentController extends Controller
         ) {
             return response()->json([
                 'message' =>
-                'The specified equipment does not belong to the equipment assignment.',
+                    'The specified equipment does not belong to the equipment assignment.',
             ], 422);
         }
-
-        /*
-         * =====================================================
-         *       GET AUTHENTICATED USER
-         * =====================================================
-         */
 
         $authUserId = $request->attributes->get(
             'auth_user_id'
@@ -381,15 +302,9 @@ class EquipmentAttachmentController extends Controller
         if (!$authUserId) {
             return response()->json([
                 'message' =>
-                'Authenticated user could not be identified.',
+                    'Authenticated user could not be identified.',
             ], 401);
         }
-
-        /*
-         * =====================================================
-         *       STORE FILE
-         * =====================================================
-         */
 
         $file = $request->file('file');
 
@@ -398,63 +313,41 @@ class EquipmentAttachmentController extends Controller
             'public'
         );
 
-        /*
-         * =====================================================
-         *       CREATE ATTACHMENT
-         * =====================================================
-         */
+        try {
+            $attachment = EquipmentAttachment::create([
+                'equipment_id' => $equipmentAssignment->equipment_id,
+                'equipment_assignment_id' => $equipmentAssignment->id,
+                'attachment_type_id' => $validated['attachment_type_id'],
+                'name' => $validated['name'],
+                'file_path' => $filePath,
+                'file_name' => $file->getClientOriginalName(),
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'description' => $validated['description'] ?? null,
+                'encoded_by' => $authUserId,
+                'updated_by' => $authUserId,
+            ]);
+        } catch (Throwable $exception) {
+            Storage::disk('public')->delete($filePath);
 
-        $attachment = EquipmentAttachment::create([
-            'equipment_id' =>
-            $equipmentAssignment->equipment_id,
-
-            'equipment_assignment_id' =>
-            $equipmentAssignment->id,
-
-            'attachment_type_id' =>
-            $validated['attachment_type_id'],
-
-            'name' =>
-            $validated['name'],
-
-            'file_path' =>
-            $filePath,
-
-            'file_name' =>
-            $file->getClientOriginalName(),
-
-            'mime_type' =>
-            $file->getMimeType(),
-
-            'file_size' =>
-            $file->getSize(),
-
-            'description' =>
-            $validated['description'] ?? null,
-
-            /*
-             * =====================================================
-             *       AUDIT INFORMATION
-             * =====================================================
-             */
-
-            'encoded_by' =>
-            $authUserId,
-
-            'updated_by' =>
-            $authUserId,
-        ]);
-
-        /*
-         * =====================================================
-         *       LOAD RELATIONSHIPS
-         * =====================================================
-         */
+            throw $exception;
+        }
 
         $attachment->load([
             'attachmentType',
             'equipmentAssignment',
         ]);
+
+        $auditLog->record(
+            $request,
+            'CREATE',
+            'equipment_attachment',
+            (string) $attachment->getKey(),
+            'Uploaded attachment for equipment assignment: '
+                . $attachment->name,
+            null,
+            $this->auditValues($attachment)
+        );
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
@@ -465,51 +358,27 @@ class EquipmentAttachmentController extends Controller
 
         return response()->json([
             'message' =>
-            'Equipment assignment attachment uploaded successfully.',
-
-            'data' =>
-            $attachment,
+                'Equipment assignment attachment uploaded successfully.',
+            'data' => $attachment,
         ], 201);
     }
 
-
-    /*
-     * =====================================================
-     *       DISPLAY THE SPECIFIED ATTACHMENT
-     * =====================================================
+    /**
+     * Display the specified attachment.
      */
     public function show(
         Equipment $equipment,
         EquipmentAttachment $attachment
     ): JsonResponse {
-
-        /*
-         * =====================================================
-         *       VERIFY ATTACHMENT OWNERSHIP
-         * =====================================================
-         */
-
         abort_unless(
             $attachment->equipment_id === $equipment->id,
             404
         );
 
-        /*
-         * =====================================================
-         *       LOAD RELATIONSHIPS
-         * =====================================================
-         */
-
         $attachment->load([
             'attachmentType',
             'equipmentAssignment',
         ]);
-
-        /*
-         * =====================================================
-         *       GENERATE FILE URL
-         * =====================================================
-         */
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
@@ -523,34 +392,19 @@ class EquipmentAttachmentController extends Controller
         ]);
     }
 
-
-    /*
-     * =====================================================
-     *       UPDATE THE SPECIFIED ATTACHMENT
-     * =====================================================
+    /**
+     * Update attachment information or replace its file.
      */
     public function update(
         Request $request,
         Equipment $equipment,
-        EquipmentAttachment $attachment
+        EquipmentAttachment $attachment,
+        AuditLogService $auditLog
     ): JsonResponse {
-
-        /*
-         * =====================================================
-         *       VERIFY ATTACHMENT OWNERSHIP
-         * =====================================================
-         */
-
         abort_unless(
             $attachment->equipment_id === $equipment->id,
             404
         );
-
-        /*
-         * =====================================================
-         *       VALIDATE REQUEST
-         * =====================================================
-         */
 
         $validated = $request->validate([
             'equipment_id' => [
@@ -558,55 +412,38 @@ class EquipmentAttachmentController extends Controller
                 'uuid',
                 'exists:equipments,id',
             ],
-
             'equipment_assignment_id' => [
                 'nullable',
                 'uuid',
                 'exists:equipment_assignments,id',
             ],
-
             'attachment_type_id' => [
                 'required',
                 'uuid',
                 'exists:attachment_types,id',
             ],
-
             'name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'file' => [
                 'nullable',
                 'file',
                 'max:20480',
             ],
-
             'description' => [
                 'nullable',
                 'string',
             ],
         ]);
 
-        /*
-         * =====================================================
-         *       VERIFY EQUIPMENT
-         * =====================================================
-         */
-
         if ($validated['equipment_id'] !== $equipment->id) {
             return response()->json([
                 'message' =>
-                'The specified equipment does not match the equipment route.',
+                    'The specified equipment does not match the equipment route.',
             ], 422);
         }
-
-        /*
-         * =====================================================
-         *       GET AUTHENTICATED USER
-         * =====================================================
-         */
 
         $authUserId = $request->attributes->get(
             'auth_user_id'
@@ -615,20 +452,13 @@ class EquipmentAttachmentController extends Controller
         if (!$authUserId) {
             return response()->json([
                 'message' =>
-                'Authenticated user could not be identified.',
+                    'Authenticated user could not be identified.',
             ], 401);
         }
-
-        /*
-         * =====================================================
-         *       VERIFY EQUIPMENT ASSIGNMENT
-         * =====================================================
-         */
 
         $assignment = null;
 
         if (!empty($validated['equipment_assignment_id'])) {
-
             $assignment = EquipmentAssignment::query()
                 ->where(
                     'id',
@@ -643,128 +473,79 @@ class EquipmentAttachmentController extends Controller
             if (!$assignment) {
                 return response()->json([
                     'message' =>
-                    'The specified equipment assignment does not belong to the specified equipment.',
+                        'The specified equipment assignment does not belong to the specified equipment.',
                 ], 422);
             }
         }
 
-        /*
-         * =====================================================
-         *       STORAGE DISK
-         * =====================================================
-         */
+        $oldValues = $this->auditValues($attachment);
+        $oldFilePath = $attachment->file_path;
+        $newFilePath = null;
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
 
-        /*
-         * =====================================================
-         *       REPLACE FILE
-         * =====================================================
-         */
-
         if ($request->hasFile('file')) {
-
             $file = $request->file('file');
 
-            $oldFilePath = $attachment->file_path;
-
-            /*
-             * Store new file first.
-             */
-
-            $filePath = $file->store(
+            $newFilePath = $file->store(
                 'equipment-attachments',
                 'public'
             );
 
-            $attachment->file_path =
-                $filePath;
-
-            $attachment->file_name =
-                $file->getClientOriginalName();
-
-            $attachment->mime_type =
-                $file->getMimeType();
-
-            $attachment->file_size =
-                $file->getSize();
-
-            /*
-             * Delete previous file.
-             */
-
-            if (
-                $oldFilePath &&
-                $disk->exists($oldFilePath)
-            ) {
-                $disk->delete(
-                    $oldFilePath
-                );
-            }
+            $attachment->file_path = $newFilePath;
+            $attachment->file_name = $file->getClientOriginalName();
+            $attachment->mime_type = $file->getMimeType();
+            $attachment->file_size = $file->getSize();
         }
 
-        /*
-         * =====================================================
-         *       UPDATE ATTACHMENT INFORMATION
-         * =====================================================
-         */
+        $attachment->equipment_id = $validated['equipment_id'];
+        $attachment->equipment_assignment_id = $assignment?->id;
+        $attachment->attachment_type_id = $validated['attachment_type_id'];
+        $attachment->name = $validated['name'];
+        $attachment->description = $validated['description'] ?? null;
+        $attachment->updated_by = $authUserId;
 
-        $attachment->equipment_id =
-            $validated['equipment_id'];
+        try {
+            $attachment->save();
+        } catch (Throwable $exception) {
+            if ($newFilePath) {
+                $disk->delete($newFilePath);
+            }
 
-        $attachment->equipment_assignment_id =
-            $assignment?->id;
+            throw $exception;
+        }
 
-        $attachment->attachment_type_id =
-            $validated['attachment_type_id'];
+        $attachment->refresh();
 
-        $attachment->name =
-            $validated['name'];
-
-        $attachment->description =
-            $validated['description'] ?? null;
-
-        /*
-         * =====================================================
-         *       AUDIT INFORMATION
-         * =====================================================
-         */
-
-        /*
-         * encoded_by is intentionally not changed.
-         *
-         * updated_by records the authenticated user
-         * who performed this update.
-         */
-
-        $attachment->updated_by =
-            $authUserId;
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'equipment_attachment',
+            (string) $attachment->getKey(),
+            'Updated equipment attachment: '
+                . $attachment->name,
+            $oldValues,
+            $this->auditValues($attachment)
+        );
 
         /*
-         * =====================================================
-         *       SAVE ATTACHMENT
-         * =====================================================
+         * Delete the previous file only after the database
+         * update has succeeded.
          */
-
-        $attachment->save();
-
-        /*
-         * =====================================================
-         *       LOAD RELATIONSHIPS
-         * =====================================================
-         */
+        if (
+            $newFilePath
+            && $oldFilePath
+            && $oldFilePath !== $newFilePath
+            && $disk->exists($oldFilePath)
+        ) {
+            $disk->delete($oldFilePath);
+        }
 
         $attachment->load([
             'attachmentType',
             'equipmentAssignment',
         ]);
-
-        /*
-         * =====================================================
-         *       GENERATE FILE URL
-         * =====================================================
-         */
 
         $attachment->file_url = $disk->url(
             $attachment->file_path
@@ -772,41 +553,24 @@ class EquipmentAttachmentController extends Controller
 
         return response()->json([
             'message' =>
-            'Equipment attachment updated successfully.',
-
-            'data' =>
-            $attachment,
+                'Equipment attachment updated successfully.',
+            'data' => $attachment,
         ]);
     }
 
-
-    /*
-     * =====================================================
-     *       REMOVE THE SPECIFIED ATTACHMENT
-     * =====================================================
+    /**
+     * Delete the specified attachment.
      */
     public function destroy(
         Request $request,
         Equipment $equipment,
-        EquipmentAttachment $attachment
+        EquipmentAttachment $attachment,
+        AuditLogService $auditLog
     ): JsonResponse {
-
-        /*
-         * =====================================================
-         *       VERIFY ATTACHMENT OWNERSHIP
-         * =====================================================
-         */
-
         abort_unless(
             $attachment->equipment_id === $equipment->id,
             404
         );
-
-        /*
-         * =====================================================
-         *       GET AUTHENTICATED USER
-         * =====================================================
-         */
 
         $authUserId = $request->attributes->get(
             'auth_user_id'
@@ -815,51 +579,45 @@ class EquipmentAttachmentController extends Controller
         if (!$authUserId) {
             return response()->json([
                 'message' =>
-                'Authenticated user could not be identified.',
+                    'Authenticated user could not be identified.',
             ], 401);
         }
 
+        $oldValues = $this->auditValues($attachment);
+        $attachmentId = (string) $attachment->getKey();
+        $attachmentName = $attachment->name;
+        $filePath = $attachment->file_path;
+
         /*
-         * =====================================================
-         *       STORAGE DISK
-         * =====================================================
+         * Delete the database record first so the audit
+         * snapshot can be recorded after a successful delete.
          */
+        $attachment->delete();
+
+        $auditLog->record(
+            $request,
+            'DELETE',
+            'equipment_attachment',
+            $attachmentId,
+            'Deleted equipment attachment: '
+                . $attachmentName,
+            $oldValues,
+            null
+        );
 
         /** @var FilesystemAdapter $disk */
         $disk = Storage::disk('public');
 
-        /*
-         * =====================================================
-         *       DELETE FILE
-         * =====================================================
-         */
-
         if (
-            $attachment->file_path &&
-            $disk->exists($attachment->file_path)
+            $filePath
+            && $disk->exists($filePath)
         ) {
-            $disk->delete(
-                $attachment->file_path
-            );
+            $disk->delete($filePath);
         }
-
-        /*
-         * =====================================================
-         *       DELETE DATABASE RECORD
-         * =====================================================
-         */
-
-        $attachment->delete();
-
-        /*
-         * =====================================================
-         *       RETURN RESPONSE
-         * =====================================================
-         */
 
         return response()->json([
             'message' =>
-            'Equipment attachment deleted successfully.',
+                'Equipment attachment deleted successfully.',
         ]);
     }
 }

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  Avatar,
   Badge,
   Button,
   Divider,
   Group,
   Paper,
-  SimpleGrid,
   Skeleton,
   Stack,
   Text,
@@ -27,9 +27,9 @@ import {
 } from "lucide-react";
 
 import { getEquipmentAssignmentAttachments } from "@/lib/api/inv-fcv/equipment-attachment";
+import { employeeApi } from "@/lib/api/hr-fcv/employee";
 
 import EquipmentTransferModal from "@/components/service/inv-fcv/assignment/equipment-transfer-modal";
-
 import EquipmentAssignmentStatusModal from "@/components/service/inv-fcv/assignment/equipment-assignment-status-modal";
 
 import type {
@@ -38,8 +38,8 @@ import type {
 } from "@/types/inv-fcv/equipment-assignment";
 
 import type { Equipment } from "@/types/inv-fcv/equipment";
-
 import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
+import type { Employee } from "@/types/hr-fcv/employee";
 
 interface EquipmentTransferFormProps {
   equipment: Equipment;
@@ -52,15 +52,11 @@ interface EquipmentTransferFormProps {
 }
 
 const formatDate = (value: string | null | undefined) => {
-  if (!value) {
-    return "—";
-  }
+  if (!value) return "—";
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleDateString("en-US", {
     timeZone: "Asia/Manila",
@@ -70,22 +66,10 @@ const formatDate = (value: string | null | undefined) => {
   });
 };
 
-const getEmployeeLabel = (employeeId: string | null | undefined) => {
-  if (!employeeId) {
-    return "No employee";
-  }
-
-  return employeeId;
-};
-
 const formatFileSize = (bytes: number | null | undefined) => {
-  if (!bytes) {
-    return "Unknown size";
-  }
+  if (bytes == null || bytes <= 0) return "Unknown size";
 
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
+  if (bytes < 1024) return `${bytes} B`;
 
   if (bytes < 1024 * 1024) {
     return `${(bytes / 1024).toFixed(1)} KB`;
@@ -98,16 +82,12 @@ const getStatusColor = (status: EquipmentAssignment["status"]) => {
   switch (status) {
     case "active":
       return "green";
-
     case "transferred":
       return "gray";
-
     case "returned":
       return "blue";
-
     case "disposed":
       return "red";
-
     default:
       return "gray";
   }
@@ -117,16 +97,12 @@ const getStatusLabel = (status: EquipmentAssignment["status"]) => {
   switch (status) {
     case "active":
       return "Active";
-
     case "transferred":
       return "Transferred";
-
     case "returned":
       return "Returned";
-
     case "disposed":
       return "Disposed";
-
     default:
       return status;
   }
@@ -139,10 +115,9 @@ export default function EquipmentTransferForm({
   attachmentTypes,
   loadingAttachmentTypes = false,
   onSuccess,
-  onCancel,
+  // onCancel,
 }: EquipmentTransferFormProps) {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
-
   const [statusModalOpen, setStatusModalOpen] = useState(false);
 
   const [statusAction, setStatusAction] = useState<"return" | "dispose">(
@@ -156,20 +131,75 @@ export default function EquipmentTransferForm({
   const [loadingAssignmentAttachments, setLoadingAssignmentAttachments] =
     useState(false);
 
-  /*
-   * =====================================================
-   * BUILD ASSIGNMENT GROUP
-   * =====================================================
-   *
-   * Hierarchy is based only on:
-   *
-   * 1. assignment_group_id
-   * 2. assigned_at
-   * 3. created_at
-   * 4. id
-   *
-   * Status is NOT used to establish the hierarchy.
-   */
+  // =====================================================
+  // LOAD HR EMPLOYEES
+  // =====================================================
+
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+
+  const employeeById = useMemo(
+    () => new Map(employees.map((employee) => [employee.id, employee])),
+    [employees],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEmployees = async () => {
+      try {
+        setLoadingEmployees(true);
+
+        const firstResponse = await employeeApi.index({
+          page: 1,
+          per_page: 100,
+        });
+
+        const firstPage = firstResponse.data;
+        const allEmployees: Employee[] = [...(firstPage.data ?? [])];
+        const lastPage = Number(firstPage.last_page ?? 1);
+
+        if (lastPage > 1) {
+          const remainingPages = await Promise.all(
+            Array.from({ length: lastPage - 1 }, (_, index) =>
+              employeeApi.index({
+                page: index + 2,
+                per_page: 100,
+              }),
+            ),
+          );
+
+          for (const response of remainingPages) {
+            allEmployees.push(...(response.data.data ?? []));
+          }
+        }
+
+        if (!cancelled) {
+          setEmployees(allEmployees);
+        }
+      } catch (error) {
+        console.error("Failed to load HR employees:", error);
+
+        if (!cancelled) {
+          setEmployees([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingEmployees(false);
+        }
+      }
+    };
+
+    void loadEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // =====================================================
+  // BUILD ASSIGNMENT GROUP
+  // =====================================================
 
   const groupedHistory = useMemo(() => {
     const groupId = assignment.assignment_group_id;
@@ -186,67 +216,130 @@ export default function EquipmentTransferForm({
       const assignedDate =
         new Date(a.assigned_at).getTime() - new Date(b.assigned_at).getTime();
 
-      if (assignedDate !== 0) {
-        return assignedDate;
-      }
+      if (assignedDate !== 0) return assignedDate;
 
       const createdDate =
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 
-      if (createdDate !== 0) {
-        return createdDate;
-      }
+      if (createdDate !== 0) return createdDate;
 
       return a.id.localeCompare(b.id);
     });
   }, [assignmentHistory, assignment]);
 
-  /*
-   * =====================================================
-   * CURRENT ASSIGNMENT
-   * =====================================================
-   *
-   * The active assignment is always the current/root
-   * assignment in the thread.
-   */
+  // =====================================================
+  // CURRENT ASSIGNMENT
+  // =====================================================
 
-  const currentAssignment = useMemo(() => {
-    return (
-      groupedHistory.find((item) => item.status === "active") ?? assignment
-    );
-  }, [groupedHistory, assignment]);
+  const currentAssignment = useMemo(
+    () => groupedHistory.find((item) => item.status === "active") ?? assignment,
+    [groupedHistory, assignment],
+  );
 
-  /*
-   * =====================================================
-   * THREAD ORDER
-   * =====================================================
-   *
-   * Current assignment
-   *      ↓
-   * Previous assignment
-   *      ↓
-   * Previous assignment
-   */
+  // =====================================================
+  // THREAD ORDER
+  // =====================================================
 
   const threadHistory = useMemo(() => {
     const activeIndex = groupedHistory.findIndex(
       (item) => item.id === currentAssignment.id,
     );
 
-    if (activeIndex === -1) {
-      return [currentAssignment];
-    }
+    if (activeIndex === -1) return [currentAssignment];
 
     const previousAssignments = groupedHistory.slice(0, activeIndex).reverse();
 
     return [currentAssignment, ...previousAssignments];
   }, [groupedHistory, currentAssignment]);
 
-  /*
-   * =====================================================
-   * LOAD ATTACHMENTS
-   * =====================================================
-   */
+  // =====================================================
+  // EMPLOYEE DETAILS RENDERER
+  // =====================================================
+
+  const renderEmployeeDetails = (employeeId: string | null | undefined) => {
+    if (!employeeId) {
+      return (
+        <Group gap="xs" wrap="nowrap">
+          <Avatar size="sm" color="gray" radius="xl">
+            <User size={14} />
+          </Avatar>
+
+          <Text size="sm" c="dimmed">
+            No employee assigned
+          </Text>
+        </Group>
+      );
+    }
+
+    const employee = employeeById.get(employeeId);
+
+    if (!employee) {
+      return (
+        <Group gap="xs" wrap="nowrap">
+          <Avatar size="sm" color="gray" radius="xl">
+            <UserRoundCog size={14} />
+          </Avatar>
+
+          <Stack gap={2} style={{ minWidth: 0 }}>
+            <Text size="sm" fw={500}>
+              {loadingEmployees
+                ? "Loading employee..."
+                : "Employee information unavailable"}
+            </Text>
+
+            {!loadingEmployees && (
+              <Text size="xs" c="dimmed" style={{ overflowWrap: "anywhere" }}>
+                Employee ID: {employeeId}
+              </Text>
+            )}
+          </Stack>
+        </Group>
+      );
+    }
+
+    const fullName = [
+      employee.first_name,
+      employee.middle_name,
+      employee.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const sectionName = employee.section?.name ?? "No section";
+    const divisionName = employee.section?.division?.name ?? "No division";
+
+    return (
+      <Group gap="sm" wrap="nowrap" align="flex-start">
+        <Avatar color="blue" radius="xl" size="md">
+          {`${employee.first_name?.[0] ?? ""}${employee.last_name?.[0] ?? ""}`}
+        </Avatar>
+
+        <Stack gap={4} style={{ minWidth: 0 }}>
+          <Text size="sm" fw={600} style={{ overflowWrap: "anywhere" }}>
+            {fullName}
+          </Text>
+
+          <Text size="xs" c="dimmed" style={{ overflowWrap: "anywhere" }}>
+            {employee.email}
+          </Text>
+
+          <Group gap={6} wrap="wrap">
+            <Badge size="sm" variant="light" color="blue">
+              Section: {sectionName}
+            </Badge>
+
+            <Badge size="sm" variant="light" color="grape">
+              Division: {divisionName}
+            </Badge>
+          </Group>
+        </Stack>
+      </Group>
+    );
+  };
+
+  // =====================================================
+  // LOAD ATTACHMENTS
+  // =====================================================
 
   useEffect(() => {
     let cancelled = false;
@@ -283,9 +376,7 @@ export default function EquipmentTransferForm({
           }),
         );
 
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         const grouped: Record<string, EquipmentAssignmentAttachment[]> = {};
 
@@ -308,52 +399,33 @@ export default function EquipmentTransferForm({
     };
   }, [threadHistory]);
 
-  /*
-   * =====================================================
-   * TRANSFER
-   * =====================================================
-   */
+  // =====================================================
+  // TRANSFER / RETURN / DISPOSE ACTIONS
+  // =====================================================
 
-  const openTransferModal = () => {
-    setTransferModalOpen(true);
-  };
-
-  const closeTransferModal = () => {
-    setTransferModalOpen(false);
-  };
-
-  /*
-   * =====================================================
-   * RETURN
-   * =====================================================
-   */
+  const openTransferModal = () => setTransferModalOpen(true);
+  const closeTransferModal = () => setTransferModalOpen(false);
 
   const openReturnModal = () => {
     setStatusAction("return");
     setStatusModalOpen(true);
   };
 
-  /*
-   * =====================================================
-   * DISPOSE
-   * =====================================================
-   */
-
   const openDisposeModal = () => {
     setStatusAction("dispose");
     setStatusModalOpen(true);
   };
 
-  const closeStatusModal = () => {
-    setStatusModalOpen(false);
-  };
+  const closeStatusModal = () => setStatusModalOpen(false);
+
+  // =====================================================
+  // RENDER
+  // =====================================================
 
   return (
     <>
       <Stack gap="sm">
-        {/* =====================================================
-         * ACTIONS
-         * ===================================================== */}
+        {/* ACTIONS */}
 
         {currentAssignment.status === "active" && (
           <Group justify="flex-end" gap="xs">
@@ -389,13 +461,9 @@ export default function EquipmentTransferForm({
           </Group>
         )}
 
-        {/* =====================================================
-         * ASSIGNMENT THREAD CONTAINER
-         * ===================================================== */}
+        {/* ASSIGNMENT THREAD */}
 
         <Paper withBorder radius="md" p="sm">
-          {/* THREAD HEADER */}
-
           <Group justify="space-between" align="center" mb="sm">
             <Group gap="xs">
               <ThemeIcon size={28} radius="sm" variant="light" color="blue">
@@ -419,9 +487,7 @@ export default function EquipmentTransferForm({
             </Badge>
           </Group>
 
-          {/* =====================================================
-           * COMPACT EQUIPMENT HEADER
-           * ===================================================== */}
+          {/* EQUIPMENT HEADER */}
 
           <Paper
             withBorder
@@ -435,13 +501,7 @@ export default function EquipmentTransferForm({
                 <Package size={15} />
               </ThemeIcon>
 
-              <Stack
-                gap={2}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                }}
-              >
+              <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={700} truncate>
                   {equipment.description}
                 </Text>
@@ -480,14 +540,11 @@ export default function EquipmentTransferForm({
             </Group>
           </Paper>
 
-          {/* =====================================================
-           * TIMELINE
-           * ===================================================== */}
+          {/* TIMELINE */}
 
           <Stack gap={0}>
             {threadHistory.map((historyItem, index) => {
               const isCurrent = historyItem.id === currentAssignment.id;
-
               const isLast = index === threadHistory.length - 1;
 
               const attachmentsForAssignment =
@@ -502,8 +559,6 @@ export default function EquipmentTransferForm({
                     paddingBottom: isLast ? 0 : 12,
                   }}
                 >
-                  {/* TIMELINE LINE */}
-
                   {!isLast && (
                     <div
                       style={{
@@ -516,8 +571,6 @@ export default function EquipmentTransferForm({
                       }}
                     />
                   )}
-
-                  {/* TIMELINE NODE */}
 
                   <ThemeIcon
                     size={22}
@@ -534,8 +587,6 @@ export default function EquipmentTransferForm({
                     {isCurrent ? <CircleCheck size={12} /> : <User size={12} />}
                   </ThemeIcon>
 
-                  {/* ASSIGNMENT CARD */}
-
                   <Paper
                     withBorder
                     radius="sm"
@@ -547,20 +598,18 @@ export default function EquipmentTransferForm({
                     }}
                   >
                     <Stack gap={7}>
-                      {/* ASSIGNMENT HEADER */}
+                      {/* EMPLOYEE AND STATUS */}
 
                       <Group
                         justify="space-between"
-                        align="center"
-                        wrap="nowrap"
+                        align="flex-start"
+                        wrap="wrap"
                       >
                         <Group
                           gap="xs"
+                          align="flex-start"
                           wrap="nowrap"
-                          style={{
-                            minWidth: 0,
-                            flex: 1,
-                          }}
+                          style={{ minWidth: 0, flex: 1 }}
                         >
                           <ThemeIcon
                             size={25}
@@ -571,46 +620,29 @@ export default function EquipmentTransferForm({
                             <UserRoundCog size={13} />
                           </ThemeIcon>
 
-                          <div
-                            style={{
-                              minWidth: 0,
-                              flex: 1,
-                            }}
-                          >
-                            <Group gap={6} wrap="wrap">
-                              <Text
-                                size="sm"
-                                fw={700}
-                                style={{
-                                  wordBreak: "break-all",
-                                }}
-                              >
-                                {getEmployeeLabel(historyItem.user_employee_id)}
-                              </Text>
-
-                              <Badge
-                                size="xs"
-                                variant="light"
-                                color={getStatusColor(historyItem.status)}
-                              >
-                                {getStatusLabel(historyItem.status)}
-                              </Badge>
-                            </Group>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            {renderEmployeeDetails(
+                              historyItem.user_employee_id,
+                            )}
                           </div>
                         </Group>
 
-                        <Text
-                          size="xs"
-                          c="dimmed"
-                          style={{
-                            flexShrink: 0,
-                          }}
-                        >
-                          {formatDate(historyItem.assigned_at)}
-                        </Text>
+                        <Stack gap={4} align="flex-end">
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color={getStatusColor(historyItem.status)}
+                          >
+                            {getStatusLabel(historyItem.status)}
+                          </Badge>
+
+                          <Text size="xs" c="dimmed">
+                            {formatDate(historyItem.assigned_at)}
+                          </Text>
+                        </Stack>
                       </Group>
 
-                      {/* COMPACT DETAILS */}
+                      {/* ASSIGNMENT DETAILS */}
 
                       <Group gap="lg" wrap="wrap">
                         <Text size="xs" c="dimmed">
@@ -644,20 +676,30 @@ export default function EquipmentTransferForm({
                         )}
                       </Group>
 
-                      {/* CARE OF */}
+                      {/* CARE OF EMPLOYEE */}
 
                       {historyItem.is_care_of &&
                         historyItem.care_of_employee_id && (
-                          <Group gap={5}>
-                            <UserRoundCog size={12} />
+                          <Paper
+                            withBorder
+                            radius="sm"
+                            p="xs"
+                            bg="var(--mantine-color-gray-0)"
+                          >
+                            <Stack gap="xs">
+                              <Group gap={5}>
+                                <UserRoundCog size={13} />
 
-                            <Text size="xs" c="dimmed">
-                              Care of:{" "}
-                              <Text span fw={600} c="dark">
-                                {historyItem.care_of_employee_id}
-                              </Text>
-                            </Text>
-                          </Group>
+                                <Text size="xs" fw={600}>
+                                  Care of employee
+                                </Text>
+                              </Group>
+
+                              {renderEmployeeDetails(
+                                historyItem.care_of_employee_id,
+                              )}
+                            </Stack>
+                          </Paper>
                         )}
 
                       {/* REMARKS */}
@@ -705,13 +747,10 @@ export default function EquipmentTransferForm({
                         </Group>
                       </Group>
 
-                      {/* ATTACHMENT LOADING */}
-
                       {loadingAssignmentAttachments &&
                       !assignmentAttachments[historyItem.id] ? (
                         <Stack gap={5}>
                           <Skeleton height={34} radius="sm" />
-
                           <Skeleton height={34} radius="sm" />
                         </Stack>
                       ) : attachmentsForAssignment.length === 0 ? (
@@ -735,35 +774,27 @@ export default function EquipmentTransferForm({
                                 <Group
                                   gap="xs"
                                   wrap="nowrap"
-                                  style={{
-                                    minWidth: 0,
-                                    flex: 1,
-                                  }}
+                                  style={{ minWidth: 0, flex: 1 }}
                                 >
                                   <ThemeIcon
                                     size={28}
                                     radius="sm"
                                     variant="light"
                                     color="blue"
-                                    style={{
-                                      flexShrink: 0,
-                                    }}
+                                    style={{ flexShrink: 0 }}
                                   >
                                     <FileText size={14} />
                                   </ThemeIcon>
 
                                   <Stack
                                     gap={1}
-                                    style={{
-                                      minWidth: 0,
-                                      flex: 1,
-                                    }}
+                                    style={{ minWidth: 0, flex: 1 }}
                                   >
                                     <Text size="xs" fw={600} truncate>
                                       {attachment.name}
                                     </Text>
 
-                                    <Group gap={5} wrap="nowrap">
+                                    <Group gap={5} wrap="wrap">
                                       <Badge
                                         size="xs"
                                         variant="light"
@@ -773,27 +804,11 @@ export default function EquipmentTransferForm({
                                           "Attachment"}
                                       </Badge>
 
-                                      <Text size="10px" c="dimmed" truncate>
+                                      <Text size="10px" c="dimmed">
                                         {attachment.file_name}
                                       </Text>
 
-                                      <Text
-                                        size="10px"
-                                        c="dimmed"
-                                        style={{
-                                          flexShrink: 0,
-                                        }}
-                                      >
-                                        •
-                                      </Text>
-
-                                      <Text
-                                        size="10px"
-                                        c="dimmed"
-                                        style={{
-                                          flexShrink: 0,
-                                        }}
-                                      >
+                                      <Text size="10px" c="dimmed">
                                         {formatFileSize(attachment.file_size)}
                                       </Text>
                                     </Group>
@@ -810,9 +825,7 @@ export default function EquipmentTransferForm({
                                     color="blue"
                                     size="compact-xs"
                                     leftSection={<Download size={12} />}
-                                    style={{
-                                      flexShrink: 0,
-                                    }}
+                                    style={{ flexShrink: 0 }}
                                   >
                                     View
                                   </Button>
@@ -824,9 +837,7 @@ export default function EquipmentTransferForm({
                                   size="10px"
                                   c="dimmed"
                                   mt={5}
-                                  style={{
-                                    whiteSpace: "pre-wrap",
-                                  }}
+                                  style={{ whiteSpace: "pre-wrap" }}
                                 >
                                   {attachment.description}
                                 </Text>
@@ -837,8 +848,6 @@ export default function EquipmentTransferForm({
                       )}
                     </Stack>
                   </Paper>
-
-                  {/* THREAD RELATIONSHIP */}
 
                   {!isLast && (
                     <Group gap={4} mt={3} ml={3}>
@@ -861,9 +870,7 @@ export default function EquipmentTransferForm({
         </Paper>
       </Stack>
 
-      {/* =====================================================
-       * TRANSFER MODAL
-       * ===================================================== */}
+      {/* TRANSFER MODAL */}
 
       <EquipmentTransferModal
         opened={transferModalOpen}
@@ -878,9 +885,7 @@ export default function EquipmentTransferForm({
         onClose={closeTransferModal}
       />
 
-      {/* =====================================================
-       * RETURN / DISPOSE MODAL
-       * ===================================================== */}
+      {/* RETURN / DISPOSE MODAL */}
 
       <EquipmentAssignmentStatusModal
         opened={statusModalOpen}

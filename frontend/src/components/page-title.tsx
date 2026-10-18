@@ -23,6 +23,9 @@ const pageTitles: Record<string, string> = {
   "/admin/create-user": "Create User",
   "/admin/edit-user/:id": "Edit User",
   "/admin/user-permissions/:id": "User Permission",
+  "/admin/view-user/:id": "View User",
+
+  "/profile": "View Profile",
 
   "/blog-dashboard": "Blog Dashboard",
   "/blog/create-content": "Create Content",

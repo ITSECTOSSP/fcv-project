@@ -76,7 +76,7 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             */
 
-            $table->date('transferred_at');
+            $table->date('transfer_date');
 
             /*
             |--------------------------------------------------------------------------
@@ -117,7 +117,7 @@ return new class extends Migration
             $table->index('equipment_id');
             $table->index('from_assignment_id');
             $table->index('to_assignment_id');
-            $table->index('transferred_at');
+            $table->index('transfer_date');
             $table->index('encoded_by');
         });
     }

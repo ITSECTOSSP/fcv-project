@@ -1,5 +1,4 @@
 import {
-    Alert,
     Box,
     Button,
     Card,
@@ -10,7 +9,6 @@ import {
 
 import {
     AlertCircle,
-    CheckCircle,
 } from "lucide-react";
 
 import { useApiHealth } from "@/lib/api/api-health";

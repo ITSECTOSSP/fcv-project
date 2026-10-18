@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   Alert,
@@ -8,6 +8,7 @@ import {
   Group,
   NumberInput,
   Paper,
+  Select,
   Stack,
   Switch,
   Text,
@@ -29,8 +30,8 @@ import {
 } from "lucide-react";
 
 import { createEquipmentAssignment } from "@/lib/api/inv-fcv/equipment-assignment";
-
 import { createEquipmentAssignmentAttachment } from "@/lib/api/inv-fcv/equipment-attachment";
+import { employeeApi } from "@/lib/api/hr-fcv/employee";
 
 import AttachmentUpload, {
   type AttachmentFormValue,
@@ -38,6 +39,7 @@ import AttachmentUpload, {
 
 import type { Equipment } from "@/types/inv-fcv/equipment";
 import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
+import type { Employee } from "@/types/hr-fcv/employee";
 
 type EquipmentAssignmentFormValue = {
   property_number: string;
@@ -62,13 +64,20 @@ const getLocalDateString = () => {
   const date = new Date();
 
   const year = date.getFullYear();
-
   const month = String(date.getMonth() + 1).padStart(2, "0");
-
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 };
+
+const getEmployeeName = (employee: Employee) =>
+  [
+    employee.first_name,
+    employee.middle_name,
+    employee.last_name,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 export default function EquipmentAssignmentForm({
   equipment,
@@ -81,19 +90,12 @@ export default function EquipmentAssignmentForm({
 
   const emptyAssignment = (): EquipmentAssignmentFormValue => ({
     property_number: equipment.property_number ?? "",
-
     serial_number: equipment.serial_number ?? "",
-
     quantity: availableQuantity > 0 ? availableQuantity : 1,
-
     assigned_at: getLocalDateString(),
-
     user_employee_id: "",
-
     is_care_of: false,
-
     care_of_employee_id: "",
-
     remarks: "",
   });
 
@@ -101,12 +103,60 @@ export default function EquipmentAssignmentForm({
     useState<EquipmentAssignmentFormValue>(emptyAssignment());
 
   const [attachments, setAttachments] = useState<AttachmentFormValue[]>([]);
-
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [employeeError, setEmployeeError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
-  const handleUpdateAssignment = <K extends keyof EquipmentAssignmentFormValue>(
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchEmployees = async () => {
+      setLoadingEmployees(true);
+      setEmployeeError(null);
+
+      try {
+        const response = await employeeApi.index({
+          per_page: 100,
+          status: "active",
+        });
+
+        if (cancelled) return;
+
+        // Laravel paginator returns employees inside response.data.data.
+        setEmployees(response.data.data);
+      } catch (err: any) {
+        if (cancelled) return;
+
+        console.error("Failed to fetch HR employees:", err);
+
+        setEmployeeError(
+          err?.response?.data?.message ??
+            "Unable to load employees from HR. Please try again.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingEmployees(false);
+        }
+      }
+    };
+
+    void fetchEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const employeeOptions = employees.map((employee) => ({
+    value: employee.id,
+    label: getEmployeeName(employee),
+  }));
+
+  const handleUpdateAssignment = <
+    K extends keyof EquipmentAssignmentFormValue,
+  >(
     field: K,
     value: EquipmentAssignmentFormValue[K],
   ) => {
@@ -117,33 +167,37 @@ export default function EquipmentAssignmentForm({
   };
 
   const handleSubmit = async () => {
-    if (submitting) {
-      return;
-    }
+    if (submitting) return;
 
     setError(null);
 
-    if (!assignment.property_number.trim()) {
-      setError("Property number is required.");
-
+    if (loadingEmployees) {
+      setError("Please wait until the employee list has finished loading.");
       return;
     }
 
-    if (!assignment.user_employee_id.trim()) {
-      setError("User employee ID is required.");
+    if (employeeError) {
+      setError("Unable to load employees. Please retry before assigning equipment.");
+      return;
+    }
 
+    if (!assignment.property_number.trim()) {
+      setError("Property number is required.");
+      return;
+    }
+
+    if (!assignment.user_employee_id) {
+      setError("Please select a user employee.");
       return;
     }
 
     if (!assignment.assigned_at) {
       setError("Assignment date is required.");
-
       return;
     }
 
     if (assignment.quantity <= 0) {
       setError("Quantity must be greater than zero.");
-
       return;
     }
 
@@ -151,36 +205,30 @@ export default function EquipmentAssignmentForm({
       setError(
         `The assignment quantity cannot exceed the available quantity of ${availableQuantity}.`,
       );
-
       return;
     }
 
-    if (assignment.is_care_of && !assignment.care_of_employee_id.trim()) {
-      setError("Care-of employee ID is required when Care Of is enabled.");
-
+    if (
+      assignment.is_care_of &&
+      !assignment.care_of_employee_id
+    ) {
+      setError("Please select a care-of employee when Care Of is enabled.");
       return;
     }
 
-    /*
-     * Validate new attachments before
-     * creating the assignment.
-     */
     for (const attachment of attachments) {
       if (!attachment.attachment_type_id) {
         setError("Please select an attachment type for all new attachments.");
-
         return;
       }
 
       if (!attachment.name.trim()) {
         setError("Please enter a name for all new attachments.");
-
         return;
       }
 
       if (!attachment.file) {
         setError("Please select a file for all new attachments.");
-
         return;
       }
     }
@@ -188,83 +236,53 @@ export default function EquipmentAssignmentForm({
     try {
       setSubmitting(true);
 
-      /*
-       * STEP 1
-       *
-       * Create the equipment assignment.
-       *
-       * The backend returns the newly-created
-       * assignment, including its UUID.
-       */
+      // STEP 1: Create the equipment assignment.
       const createdAssignment = await createEquipmentAssignment({
         equipment_id: equipment.id,
-
         property_number: assignment.property_number.trim(),
-
         serial_number: assignment.serial_number.trim() || null,
-
         is_care_of: assignment.is_care_of,
-
         care_of_employee_id: assignment.is_care_of
-          ? assignment.care_of_employee_id.trim()
+          ? assignment.care_of_employee_id
           : null,
-
-        user_employee_id: assignment.user_employee_id.trim(),
-
+        user_employee_id: assignment.user_employee_id,
         quantity: assignment.quantity,
-
         assigned_at: assignment.assigned_at,
-
         remarks: assignment.remarks.trim() || null,
       });
 
-      /*
-       * STEP 2
-       *
-       * Upload attachments after the
-       * assignment exists.
-       *
-       * The assignment ID comes from
-       * the newly-created assignment.
-       */
+      // STEP 2: Upload attachments after the assignment exists.
       for (const attachment of attachments) {
-        if (!attachment.file) {
-          continue;
-        }
+        if (!attachment.file) continue;
 
         await createEquipmentAssignmentAttachment({
           equipment_id: equipment.id,
-
           equipment_assignment_id: createdAssignment.id,
-
           attachment_type_id: attachment.attachment_type_id,
-
           name: attachment.name.trim(),
-
           file: attachment.file,
-
           description: attachment.description.trim() || null,
         });
       }
 
-      /*
-       * Everything succeeded.
-       */
       onSuccess?.();
-    } catch (error: any) {
-      console.error("Failed to create equipment assignment:", error);
+    } catch (err: any) {
+      console.error("Failed to create equipment assignment:", err);
 
-      const validationErrors = error?.response?.data?.errors;
+      const validationErrors = err?.response?.data?.errors;
 
       if (validationErrors) {
         const firstError = Object.values(validationErrors)
           .flat()
-          .find((message): message is string => typeof message === "string");
+          .find(
+            (message): message is string =>
+              typeof message === "string",
+          );
 
         setError(firstError ?? "Unable to create the equipment assignment.");
       } else {
         setError(
-          error?.response?.data?.message ??
+          err?.response?.data?.message ??
             "Unable to create the equipment assignment.",
         );
       }
@@ -282,6 +300,49 @@ export default function EquipmentAssignmentForm({
           title="Unable to assign equipment"
         >
           {error}
+        </Alert>
+      )}
+
+      {employeeError && (
+        <Alert
+          color="red"
+          icon={<AlertCircle size={18} />}
+          title="Employee list unavailable"
+        >
+          <Stack gap="xs">
+            <Text size="sm">{employeeError}</Text>
+
+            <Group>
+              <Button
+                size="xs"
+                variant="light"
+                color="red"
+                onClick={async () => {
+                  setLoadingEmployees(true);
+                  setEmployeeError(null);
+
+                  try {
+                    const response = await employeeApi.index({
+                      per_page: 100,
+                      status: "active",
+                    });
+
+                    setEmployees(response.data.data);
+                  } catch (err: any) {
+                    setEmployeeError(
+                      err?.response?.data?.message ??
+                        "Unable to load employees from HR. Please try again.",
+                    );
+                  } finally {
+                    setLoadingEmployees(false);
+                  }
+                }}
+                disabled={loadingEmployees || submitting}
+              >
+                Retry
+              </Button>
+            </Group>
+          </Stack>
         </Alert>
       )}
 
@@ -401,23 +462,31 @@ export default function EquipmentAssignmentForm({
             </Badge>
           </div>
 
+          {/* EMPLOYEE SELECTION */}
           <Stack gap="xs">
             <Text size="xs" fw={600} tt="uppercase" c="dimmed">
               Employee
             </Text>
 
-            <TextInput
-              label="User Employee ID"
-              placeholder="Enter employee ID"
-              leftSection={<User size={17} />}
-              value={assignment.user_employee_id}
-              onChange={(event) =>
-                handleUpdateAssignment(
-                  "user_employee_id",
-                  event.currentTarget.value,
-                )
+            <Select
+              label="User Employee"
+              placeholder={
+                loadingEmployees
+                  ? "Loading employees..."
+                  : employeeError
+                    ? "Employee list unavailable"
+                    : "Select an employee"
               }
-              disabled={submitting}
+              leftSection={<User size={17} />}
+              data={employeeOptions}
+              value={assignment.user_employee_id || null}
+              onChange={(value) =>
+                handleUpdateAssignment("user_employee_id", value ?? "")
+              }
+              searchable
+              clearable
+              nothingFoundMessage="No employees found"
+              disabled={submitting || loadingEmployees || !!employeeError}
               required
             />
 
@@ -425,27 +494,46 @@ export default function EquipmentAssignmentForm({
               label="Care Of"
               description="The equipment is assigned under the care of another employee."
               checked={assignment.is_care_of}
-              onChange={(event) =>
-                handleUpdateAssignment(
-                  "is_care_of",
-                  event.currentTarget.checked,
-                )
-              }
+              onChange={(event) => {
+                const enabled = event.currentTarget.checked;
+
+                setAssignment((current) => ({
+                  ...current,
+                  is_care_of: enabled,
+                  care_of_employee_id: enabled
+                    ? current.care_of_employee_id
+                    : "",
+                }));
+              }}
               disabled={submitting}
             />
 
             {assignment.is_care_of && (
-              <TextInput
-                label="Care-of Employee ID"
-                placeholder="Enter care-of employee ID"
-                value={assignment.care_of_employee_id}
-                onChange={(event) =>
+              <Select
+                label="Care-of Employee"
+                placeholder={
+                  loadingEmployees
+                    ? "Loading employees..."
+                    : employeeError
+                      ? "Employee list unavailable"
+                      : "Select the care-of employee"
+                }
+                data={employeeOptions}
+                value={assignment.care_of_employee_id || null}
+                onChange={(value) =>
                   handleUpdateAssignment(
                     "care_of_employee_id",
-                    event.currentTarget.value,
+                    value ?? "",
                   )
                 }
-                disabled={submitting}
+                searchable
+                clearable
+                nothingFoundMessage="No employees found"
+                disabled={
+                  submitting ||
+                  loadingEmployees ||
+                  !!employeeError
+                }
                 required
               />
             )}
@@ -499,7 +587,11 @@ export default function EquipmentAssignmentForm({
 
       {/* ACTIONS */}
       <Group justify="flex-end">
-        <Button variant="default" onClick={onCancel} disabled={submitting}>
+        <Button
+          variant="default"
+          onClick={onCancel}
+          disabled={submitting}
+        >
           Cancel
         </Button>
 
@@ -507,7 +599,12 @@ export default function EquipmentAssignmentForm({
           leftSection={!submitting ? <Check size={17} /> : undefined}
           onClick={handleSubmit}
           loading={submitting}
-          disabled={submitting || availableQuantity <= 0}
+          disabled={
+            submitting ||
+            availableQuantity <= 0 ||
+            loadingEmployees ||
+            !!employeeError
+          }
         >
           {submitting ? "Assigning..." : "Assign Equipment"}
         </Button>

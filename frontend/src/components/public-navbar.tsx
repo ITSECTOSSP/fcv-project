@@ -30,24 +30,24 @@ const navigation = [
   },
 ];
 
-const solutionNavigation = [
-  {
-    label: "Coming Soon",
-    to: "/",
-  },
-  // {
-  //   label: "Document Requests",
-  //   to: "/requests",
-  // },
-  // {
-  //   label: "Certified Copies",
-  //   to: "/certified-copies",
-  // },
-  // {
-  //   label: "Track Request",
-  //   to: "/track-request",
-  // },
-];
+// const solutionNavigation = [
+//   {
+//     label: "Coming Soon",
+//     to: "/",
+//   },
+//   // {
+//   //   label: "Document Requests",
+//   //   to: "/requests",
+//   // },
+//   // {
+//   //   label: "Certified Copies",
+//   //   to: "/certified-copies",
+//   // },
+//   // {
+//   //   label: "Track Request",
+//   //   to: "/track-request",
+//   // },
+// ];
 
 export default function PublicNavbar() {
   const location = useLocation();

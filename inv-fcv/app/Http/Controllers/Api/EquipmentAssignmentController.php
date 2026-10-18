@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Enums\EquipmentAssignmentStatus;
@@ -91,7 +92,7 @@ class EquipmentAssignmentController extends Controller
         $validated = $request->validate([
             'equipment_id' => [
                 'required',
-                'exists:equipment,id',
+                'exists:equipments,id',
             ],
             'property_number' => [
                 'nullable',
@@ -110,11 +111,11 @@ class EquipmentAssignmentController extends Controller
             'care_of_employee_id' => [
                 'nullable',
                 'required_if:is_care_of,1',
-                'exists:employees,id',
+                'uuid',
             ],
             'user_employee_id' => [
                 'required',
-                'exists:employees,id',
+                'uuid',
             ],
             'quantity' => [
                 'required',
@@ -146,7 +147,7 @@ class EquipmentAssignmentController extends Controller
         ) {
             throw ValidationException::withMessages([
                 'care_of_employee_id' =>
-                    'Care-of employee must not be specified when care-of is disabled.',
+                'Care-of employee must not be specified when care-of is disabled.',
             ]);
         }
 
@@ -437,7 +438,7 @@ class EquipmentAssignmentController extends Controller
         $validated = $request->validate([
             'user_employee_id' => [
                 'required',
-                'exists:employees,id',
+                'uuid',
             ],
             'is_care_of' => [
                 'required',
@@ -446,7 +447,7 @@ class EquipmentAssignmentController extends Controller
             'care_of_employee_id' => [
                 'nullable',
                 'required_if:is_care_of,1',
-                'exists:employees,id',
+                'uuid',
             ],
             'transfer_date' => [
                 'required',
@@ -497,7 +498,7 @@ class EquipmentAssignmentController extends Controller
                 $validated['is_care_of']
                 && !empty($validated['care_of_employee_id'])
                 && (string) $validated['care_of_employee_id']
-                    === (string) $validated['user_employee_id']
+                === (string) $validated['user_employee_id']
             ) {
                 throw ValidationException::withMessages([
                     'care_of_employee_id' => 'The care-of employee must be different from the assigned employee.',
@@ -534,9 +535,12 @@ class EquipmentAssignmentController extends Controller
              * Keep the transfer model's field names aligned with your
              * existing EquipmentTransfer migration/model.
              */
+
             $transfer = EquipmentTransfer::create([
+                'equipment_id' => $sourceAssignment->equipment_id,
                 'from_assignment_id' => $sourceAssignment->getKey(),
                 'to_assignment_id' => $newAssignment->getKey(),
+                'quantity' => $sourceAssignment->quantity,
                 'transfer_date' => $validated['transfer_date'],
                 'remarks' => $validated['remarks'] ?? null,
                 'encoded_by' => $userId,

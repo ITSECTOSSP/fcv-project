@@ -23,7 +23,7 @@ import type { EquipmentAttachment } from "@/types/inv-fcv/equipment";
 import type { EquipmentType } from "@/types/inv-fcv/equipment-types";
 
 import EquipmentAttachmentUpload, {
-  type EquipmentAttachmentFormValue,
+  type AttachmentFormValue,
 } from "./equipment-attachment-form";
 
 /* =====================================================
@@ -44,7 +44,7 @@ export type EquipmentFormValues = {
   serial_number: string;
   description: string;
   unit_cost: number;
-  attachments: EquipmentAttachmentFormValue[];
+  attachments: AttachmentFormValue[];
 };
 
 type ExistingAttachmentEditValue = {

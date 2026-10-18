@@ -29,7 +29,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { useAuth } from "@/lib/api/auth/use-auth";
 
@@ -149,7 +149,7 @@ interface SidebarProps {
 
 export default function Sidebar({ onClose }: SidebarProps) {
   const location = useLocation();
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   /*
   |--------------------------------------------------------------------------

@@ -31,6 +31,8 @@ import {
   Search,
   Trash2,
   Users,
+  Phone,
+  Mail,
 } from "lucide-react";
 
 import { useNavigate } from "react-router-dom";
@@ -429,130 +431,184 @@ export default function EmployeeTable({
                     .filter(Boolean)
                     .join(" ");
 
-                  const statusConfig = STATUS_CONFIG[employee.status];
+                  const initials = [employee.first_name, employee.last_name]
+                    .filter(Boolean)
+                    .map((name) => name.charAt(0).toUpperCase())
+                    .join("");
+
+                  const statusConfig = STATUS_CONFIG[employee.status] ?? {
+                    label: employee.status,
+                    color: "gray",
+                  };
 
                   return (
-                    <Table.Tr key={employee.id}>
-                      {/* =====================================
-                       * EMPLOYEE
-                       * ===================================== */}
-
-                      <Table.Td px="xl" py="lg">
-                        <Group align="flex-start" wrap="nowrap" gap="md">
-                          <ThemeIcon
-                            size={54}
-                            radius="md"
-                            variant="light"
+                    <Table.Tr key={employee.id} className="employee-table-row">
+                      <Table.Td px="xl" py="md">
+                        <Group align="center" wrap="nowrap" gap="sm">
+                          <Avatar
+                            size={46}
+                            radius="xl"
                             color="blue"
-                            style={{
-                              flexShrink: 0,
-                            }}
+                            variant="light"
+                            fw={700}
                           >
-                            <Users size={26} strokeWidth={1.7} />
-                          </ThemeIcon>
+                            {initials || <Users size={20} />}
+                          </Avatar>
 
-                          <Stack
-                            gap={5}
-                            style={{
-                              minWidth: 0,
-                            }}
-                          >
-                            <Text fw={700} size="sm" c="dark" lineClamp={1}>
-                              {fullName}
+                          <Stack gap={4} style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={650} lineClamp={1}>
+                              {fullName || "Unnamed employee"}
                             </Text>
 
-                            <Text size="sm" c="dimmed" lineClamp={1}>
+                            <Text size="xs" c="dimmed" lineClamp={1}>
                               {employee.email || "No email provided"}
                             </Text>
 
-                            <Text size="xs" c="gray.6">
-                              Employee ID:
-                              <Text span fw={600} c="gray.7">
-                                {employee.id}
+                            <Group gap={6} wrap="nowrap">
+                              <CalendarDays
+                                size={13}
+                                strokeWidth={1.8}
+                                color="var(--mantine-color-dimmed)"
+                              />
+
+                              <Text size="xs" c="dimmed">
+                                Born{" "}
+                                {employee.date_birth
+                                  ? formatDate(employee.date_birth)
+                                  : "Not provided"}
                               </Text>
-                            </Text>
+                            </Group>
                           </Stack>
                         </Group>
                       </Table.Td>
 
-                      {/* =====================================
-                       * DIVISION
-                       * ===================================== */}
-
-                      <Table.Td px="lg" py="lg">
-                        <Text size="sm" fw={500} c="gray.8">
-                          {employee.section?.division?.name ?? "—"}
-                        </Text>
+                      {/* DIVISION */}
+                      <Table.Td px="lg" py="md">
+                        <Badge
+                          variant="light"
+                          color="violet"
+                          radius="sm"
+                          size="lg"
+                          fw={500}
+                          styles={{
+                            root: {
+                              height: "auto",
+                              maxWidth: "100%",
+                              whiteSpace: "normal",
+                              textAlign: "left",
+                            },
+                            label: {
+                              whiteSpace: "normal",
+                              overflow: "visible",
+                              textOverflow: "unset",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.4,
+                            },
+                          }}
+                        >
+                          {employee.section?.division?.name ?? "No division"}
+                        </Badge>
                       </Table.Td>
 
-                      {/* =====================================
-                       * SECTION
-                       * ===================================== */}
-
-                      <Table.Td px="lg" py="lg">
-                        <Text size="sm" fw={500} c="gray.8">
-                          {employee.section?.name ?? "—"}
-                        </Text>
+                      {/* SECTION */}
+                      <Table.Td px="lg" py="md">
+                        <Badge
+                          variant="light"
+                          color="blue"
+                          radius="sm"
+                          size="lg"
+                          fw={500}
+                          styles={{
+                            root: {
+                              height: "auto",
+                              maxWidth: "100%",
+                              whiteSpace: "normal",
+                              textAlign: "left",
+                            },
+                            label: {
+                              whiteSpace: "normal",
+                              overflow: "visible",
+                              textOverflow: "unset",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.4,
+                            },
+                          }}
+                        >
+                          {employee.section?.name ?? "No section"}
+                        </Badge>
                       </Table.Td>
 
-                      {/* =====================================
-                       * CONTACT
-                       * ===================================== */}
+                      {/* CONTACT */}
+                      <Table.Td px="lg" py="md">
+                        <Stack gap={8}>
+                          {/* Phone number */}
+                          <Group gap="xs" wrap="nowrap">
+                            <ThemeIcon
+                              variant="light"
+                              color="gray"
+                              size={28}
+                              radius="md"
+                            >
+                              <Phone size={14} strokeWidth={1.8} />
+                            </ThemeIcon>
 
-                      <Table.Td px="lg" py="lg">
-                        <Stack gap={5}>
-                          <Text size="sm" fw={500} c="gray.8">
-                            {employee.contact_number || "No contact number"}
-                          </Text>
+                            <Text size="sm" fw={500} lineClamp={1}>
+                              {employee.contact_number || "No contact number"}
+                            </Text>
+                          </Group>
 
-                          <Text size="xs" c="dimmed" lineClamp={1}>
-                            {employee.email || "No email provided"}
-                          </Text>
+                          {/* Email */}
+                          <Group gap="xs" wrap="nowrap">
+                            <ThemeIcon
+                              variant="light"
+                              color="gray"
+                              size={28}
+                              radius="md"
+                            >
+                              <Mail size={14} strokeWidth={1.8} />
+                            </ThemeIcon>
+
+                            <Text size="xs" c="dimmed" lineClamp={1}>
+                              {employee.email || "No email provided"}
+                            </Text>
+                          </Group>
                         </Stack>
                       </Table.Td>
-
-                      {/* =====================================
-                       * STATUS
-                       * ===================================== */}
-
-                      <Table.Td px="lg" py="lg">
+                      <Table.Td px="lg" py="md">
                         <Badge
                           size="sm"
                           variant="light"
                           color={statusConfig.color}
-                          radius="xl"
+                          radius="sm"
+                          fw={600}
                         >
                           {statusConfig.label}
                         </Badge>
                       </Table.Td>
 
-                      {/* =====================================
-                       * DATE ADDED
-                       * ===================================== */}
-
-                      <Table.Td px="lg" py="lg">
-                        <Group gap={7} wrap="nowrap">
+                      <Table.Td px="lg" py="md">
+                        <Group gap={8} wrap="nowrap">
                           <CalendarDays
                             size={15}
                             strokeWidth={1.8}
                             color="var(--mantine-color-dimmed)"
                           />
 
-                          <Text size="sm" fw={500} c="gray.8">
+                          <Text
+                            size="sm"
+                            c="dimmed"
+                            style={{ whiteSpace: "nowrap" }}
+                          >
                             {formatDate(employee.created_at)}
                           </Text>
                         </Group>
                       </Table.Td>
 
-                      {/* =====================================
-                       * ACTIONS
-                       * ===================================== */}
-
-                      <Table.Td px="lg" py="lg">
+                      <Table.Td px="lg" py="md">
                         <Group justify="flex-end">
                           <Menu
                             shadow="md"
-                            width={170}
+                            width={180}
                             position="bottom-end"
                             withinPortal
                           >
@@ -561,9 +617,9 @@ export default function EmployeeTable({
                                 <ActionIcon
                                   variant="subtle"
                                   color="gray"
-                                  size="md"
+                                  size="lg"
                                   radius="md"
-                                  aria-label="Employee actions"
+                                  aria-label={`Actions for ${fullName}`}
                                 >
                                   <MoreVertical size={18} strokeWidth={1.8} />
                                 </ActionIcon>
@@ -577,7 +633,7 @@ export default function EmployeeTable({
                                   // Add employee view navigation here.
                                 }}
                               >
-                                View
+                                View employee
                               </Menu.Item>
 
                               <Menu.Item
@@ -588,7 +644,7 @@ export default function EmployeeTable({
                                   )
                                 }
                               >
-                                Edit
+                                Edit employee
                               </Menu.Item>
 
                               <Divider my={4} />
@@ -602,7 +658,7 @@ export default function EmployeeTable({
                                 }}
                                 disabled={!onDelete}
                               >
-                                Delete
+                                Delete employee
                               </Menu.Item>
                             </Menu.Dropdown>
                           </Menu>

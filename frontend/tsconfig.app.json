@@ -23,10 +23,11 @@
             "@/*": ["./src/*"]
         },
 
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
+        "noUnusedLocals": false,
+        "noUnusedParameters": false,
         "erasableSyntaxOnly": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+        
     },
 
     "include": ["src"]

@@ -9,7 +9,7 @@ import {
   Text,
   ThemeIcon,
 } from "@mantine/core";
-import { ArrowUpRight, Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const navigation = [

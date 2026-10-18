@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   Alert,
@@ -7,13 +7,14 @@ import {
   Group,
   Modal,
   Paper,
+  Select,
   Stack,
   Switch,
   Text,
   Textarea,
-  TextInput,
   ThemeIcon,
 } from "@mantine/core";
+
 import { DateInput } from "@mantine/dates";
 
 import {
@@ -24,6 +25,7 @@ import {
   UserRoundCog,
 } from "lucide-react";
 
+import { employeeApi } from "@/lib/api/hr-fcv/employee";
 import { transferEquipment } from "@/lib/api/inv-fcv/equipment-assignment";
 import { createEquipmentAssignmentAttachment } from "@/lib/api/inv-fcv/equipment-attachment";
 
@@ -31,6 +33,7 @@ import AttachmentUpload, {
   type AttachmentFormValue,
 } from "@/components/service/inv-fcv/equipment/equipment-attachment-form";
 
+import type { Employee } from "@/types/hr-fcv/employee";
 import type { Equipment } from "@/types/inv-fcv/equipment";
 import type { EquipmentAssignment } from "@/types/inv-fcv/equipment-assignment";
 import type { AttachmentType } from "@/types/inv-fcv/attachment-type";
@@ -62,6 +65,10 @@ export default function EquipmentTransferModal({
   onSuccess,
   onClose,
 }: EquipmentTransferModalProps) {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [employeeError, setEmployeeError] = useState<string | null>(null);
+
   const [userEmployeeId, setUserEmployeeId] = useState("");
 
   const [isCareOf, setIsCareOf] = useState(assignment.is_care_of);
@@ -71,18 +78,75 @@ export default function EquipmentTransferModal({
   );
 
   const [transferredAt, setTransferredAt] = useState(getLocalDateString());
-
   const [remarks, setRemarks] = useState("");
-
   const [attachments, setAttachments] = useState<AttachmentFormValue[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
-
   const [error, setError] = useState<string | null>(null);
 
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string[]>
   >({});
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setLoadingEmployees(true);
+      setEmployeeError(null);
+
+      const response = await employeeApi.index({
+        per_page: 100,
+        status: "active",
+      });
+
+      setEmployees(response.data.data);
+    } catch (error: any) {
+      console.error("Failed to fetch employees:", error);
+
+      setEmployeeError(
+        error?.response?.data?.message ??
+          "Unable to load employees. Please try again.",
+      );
+    } finally {
+      setLoadingEmployees(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (opened) {
+      void fetchEmployees();
+    }
+  }, [opened, fetchEmployees]);
+
+  useEffect(() => {
+    if (opened) {
+      setIsCareOf(assignment.is_care_of);
+      setCareOfEmployeeId(assignment.care_of_employee_id ?? "");
+    }
+  }, [
+    opened,
+    assignment.id,
+    assignment.is_care_of,
+    assignment.care_of_employee_id,
+  ]);
+
+  const employeeOptions = employees.map((employee) => {
+    const fullName = [
+      employee.first_name,
+      employee.middle_name,
+      employee.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return {
+      value: employee.id,
+      label: fullName || employee.email || employee.id,
+    };
+  });
+
+  const newAssigneeOptions = employeeOptions.filter(
+    (employee) => employee.value !== assignment.user_employee_id,
+  );
 
   const getFieldError = (field: string) => {
     return validationErrors[field]?.[0];
@@ -90,19 +154,12 @@ export default function EquipmentTransferModal({
 
   const resetForm = () => {
     setUserEmployeeId("");
-
     setIsCareOf(assignment.is_care_of);
-
     setCareOfEmployeeId(assignment.care_of_employee_id ?? "");
-
     setTransferredAt(getLocalDateString());
-
     setRemarks("");
-
     setAttachments([]);
-
     setError(null);
-
     setValidationErrors({});
   };
 
@@ -124,12 +181,17 @@ export default function EquipmentTransferModal({
     setValidationErrors({});
 
     if (!userEmployeeId.trim()) {
-      setError("Please enter the employee ID of the new assignee.");
+      setError("Please select the new assignee.");
       return;
     }
 
     if (isCareOf && !careOfEmployeeId.trim()) {
-      setError("Please enter the Care Of employee ID.");
+      setError("Please select the Care Of employee.");
+      return;
+    }
+
+    if (isCareOf && careOfEmployeeId === userEmployeeId) {
+      setError("The Care Of employee must be different from the new assignee.");
       return;
     }
 
@@ -138,14 +200,11 @@ export default function EquipmentTransferModal({
       return;
     }
 
-    if (userEmployeeId.trim() === assignment.user_employee_id) {
+    if (userEmployeeId === assignment.user_employee_id) {
       setError("The new employee must be different from the current assignee.");
       return;
     }
 
-    /*
-     * Validate new attachments.
-     */
     for (const attachment of attachments) {
       if (!attachment.attachment_type_id) {
         setError("Please select an attachment type for every attachment.");
@@ -166,36 +225,20 @@ export default function EquipmentTransferModal({
     try {
       setSubmitting(true);
 
-      /*
-       * STEP 1
-       *
-       * Transfer the current assignment.
-       *
-       * The backend will:
-       * - mark the current assignment as transferred
-       * - create the new active assignment
-       * - keep the same assignment_group_id
-       */
       const response = await transferEquipment(assignment.id, {
-        user_employee_id: userEmployeeId.trim(),
+        user_employee_id: userEmployeeId,
 
         is_care_of: isCareOf,
 
-        care_of_employee_id: isCareOf ? careOfEmployeeId.trim() : null,
+        care_of_employee_id: isCareOf ? careOfEmployeeId : null,
 
-        transferred_at: transferredAt,
+        transfer_date: transferredAt,
 
         remarks: remarks.trim() || null,
       });
 
       const newAssignment = response.assignment;
 
-      /*
-       * STEP 2
-       *
-       * Upload attachments to the newly-created
-       * assignment.
-       */
       for (const attachment of attachments) {
         if (!attachment.file) {
           continue;
@@ -203,24 +246,15 @@ export default function EquipmentTransferModal({
 
         await createEquipmentAssignmentAttachment({
           equipment_id: equipment.id,
-
           equipment_assignment_id: newAssignment.id,
-
           attachment_type_id: attachment.attachment_type_id,
-
           name: attachment.name.trim(),
-
           file: attachment.file,
-
           description: attachment.description?.trim() || null,
         });
       }
 
-      /*
-       * Everything succeeded.
-       */
       resetForm();
-
       await onSuccess();
     } catch (error: any) {
       console.error("Failed to transfer equipment:", error);
@@ -278,22 +312,12 @@ export default function EquipmentTransferModal({
               <UserRoundCog size={17} />
             </ThemeIcon>
 
-            <div
-              style={{
-                minWidth: 0,
-              }}
-            >
+            <div style={{ minWidth: 0 }}>
               <Text size="xs" c="dimmed">
                 CURRENT ASSIGNEE
               </Text>
 
-              <Text
-                size="sm"
-                fw={700}
-                style={{
-                  wordBreak: "break-all",
-                }}
-              >
+              <Text size="sm" fw={700} style={{ wordBreak: "break-all" }}>
                 {assignment.user_employee_id}
               </Text>
             </div>
@@ -304,10 +328,31 @@ export default function EquipmentTransferModal({
           </Group>
         </Paper>
 
-        {/* ERROR */}
+        {/* TRANSFER ERROR */}
         {error && (
           <Alert color="red" variant="light" icon={<AlertCircle size={18} />}>
             {error}
+          </Alert>
+        )}
+
+        {/* EMPLOYEE FETCH ERROR */}
+        {employeeError && (
+          <Alert color="red" variant="light" icon={<AlertCircle size={18} />}>
+            <Stack gap="xs">
+              <Text size="sm">{employeeError}</Text>
+
+              <Group justify="flex-start">
+                <Button
+                  size="xs"
+                  variant="light"
+                  onClick={() => void fetchEmployees()}
+                  loading={loadingEmployees}
+                  disabled={submitting}
+                >
+                  Retry loading employees
+                </Button>
+              </Group>
+            </Stack>
           </Alert>
         )}
 
@@ -317,18 +362,24 @@ export default function EquipmentTransferModal({
             <Text fw={600}>New Assignment</Text>
 
             <Text size="xs" c="dimmed">
-              Enter the employee who will receive this equipment.
+              Select the employee who will receive this equipment.
             </Text>
           </div>
 
           <Divider />
 
-          <TextInput
-            label="Employee ID"
-            placeholder="Enter employee UUID"
-            value={userEmployeeId}
-            onChange={(event) => setUserEmployeeId(event.currentTarget.value)}
-            disabled={submitting}
+          <Select
+            label="New Assignee"
+            placeholder={
+              loadingEmployees ? "Loading employees..." : "Select an employee"
+            }
+            data={newAssigneeOptions}
+            value={userEmployeeId || null}
+            onChange={(value) => setUserEmployeeId(value ?? "")}
+            searchable
+            clearable
+            nothingFoundMessage="No employees found"
+            disabled={submitting || loadingEmployees || !!employeeError}
             error={getFieldError("user_employee_id")}
             required
           />
@@ -350,14 +401,20 @@ export default function EquipmentTransferModal({
           />
 
           {isCareOf && (
-            <TextInput
-              label="Care Of Employee ID"
-              placeholder="Enter Care Of employee UUID"
-              value={careOfEmployeeId}
-              onChange={(event) =>
-                setCareOfEmployeeId(event.currentTarget.value)
+            <Select
+              label="Care Of Employee"
+              placeholder={
+                loadingEmployees
+                  ? "Loading employees..."
+                  : "Select a Care Of employee"
               }
-              disabled={submitting}
+              data={employeeOptions}
+              value={careOfEmployeeId || null}
+              onChange={(value) => setCareOfEmployeeId(value ?? "")}
+              searchable
+              clearable
+              nothingFoundMessage="No employees found"
+              disabled={submitting || loadingEmployees || !!employeeError}
               error={getFieldError("care_of_employee_id")}
               required
             />
@@ -371,7 +428,7 @@ export default function EquipmentTransferModal({
             valueFormat="YYYY-MM-DD"
             leftSection={<CalendarDays size={17} />}
             disabled={submitting}
-            error={getFieldError("transferred_at")}
+            error={getFieldError("transfer_date")}
             required
           />
 
@@ -441,6 +498,7 @@ export default function EquipmentTransferModal({
             leftSection={<ArrowLeftRight size={16} />}
             onClick={handleSubmit}
             loading={submitting}
+            disabled={loadingEmployees || !!employeeError}
           >
             Transfer Equipment
           </Button>

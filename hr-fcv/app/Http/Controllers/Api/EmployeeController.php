@@ -6,7 +6,7 @@ use App\Enums\EmployeeStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Services\AuthService;
-
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,199 +14,102 @@ use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
+    /**
+     * Build a snapshot of employee values for audit logging.
+     */
+    private function auditValues(Employee $employee): array
+    {
+        $values = $employee->only([
+            'id',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'date_birth',
+            'email',
+            'contact_number',
+            'section_id',
+            'status',
+        ]);
 
-    /*
-    * |--------------------------------------------------------------------------
-    * | DISPLAY THE AUTHENTICATED USER'S EMPLOYEE
-    * |--------------------------------------------------------------------------
-    *
-    * Retrieves the employee record associated with the currently
-    * authenticated Auth-FCV user.
-    *
-    * |--------------------------------------------------------------------------
-    */
+        // Keep the date consistent in audit records.
+        $values['date_birth'] = $employee->date_birth
+            ? $employee->date_birth->format('Y-m-d')
+            : null;
 
+        // Store the enum's scalar value rather than the enum object.
+        $status = $employee->status;
+
+        $values['status'] = $status instanceof EmployeeStatus
+            ? $status->value
+            : $status;
+
+        return $values;
+    }
+
+    /**
+     * Display the authenticated user's employee.
+     */
     public function me(
         Request $request,
         AuthService $authService
     ): JsonResponse {
-
-        /*
-     * |--------------------------------------------------------------------------
-     * | GET BEARER TOKEN
-     * |--------------------------------------------------------------------------
-     */
-
         $token = $request->bearerToken();
-
-        /*
-     * |--------------------------------------------------------------------------
-     * | VERIFY BEARER TOKEN
-     * |--------------------------------------------------------------------------
-     */
 
         if (!$token) {
             return response()->json([
-                'message' =>
-                'Authentication token could not be identified.',
+                'message' => 'Authentication token could not be identified.',
             ], 401);
         }
 
-        /*
-     * |--------------------------------------------------------------------------
-     * | GET EMPLOYEE ID FROM AUTH-FCV
-     * |--------------------------------------------------------------------------
-     */
-
-        $employeeId =
-            $authService->getAuthenticatedEmployeeId(
-                $token
-            );
-
-        /*
-     * |--------------------------------------------------------------------------
-     * | USER IS NOT LINKED TO AN EMPLOYEE
-     * |--------------------------------------------------------------------------
-     */
+        $employeeId = $authService->getAuthenticatedEmployeeId($token);
 
         if (!$employeeId) {
             return response()->json([
                 'data' => null,
-                'message' =>
-                'The authenticated user is not linked to an employee.',
+                'message' => 'The authenticated user is not linked to an employee.',
             ]);
         }
 
-        /*
-     * |--------------------------------------------------------------------------
-     * | FIND EMPLOYEE
-     * |--------------------------------------------------------------------------
-     */
-
         $employee = Employee::query()
-            ->with([
-                'section.division',
-            ])
+            ->with(['section.division'])
             ->find($employeeId);
-
-        /*
-     * |--------------------------------------------------------------------------
-     * | EMPLOYEE NOT FOUND
-     * |--------------------------------------------------------------------------
-     */
 
         if (!$employee) {
             return response()->json([
                 'data' => null,
-                'message' =>
-                'The employee linked to this account could not be found.',
+                'message' => 'The employee linked to this account could not be found.',
             ], 404);
         }
-
-        /*
-     * |--------------------------------------------------------------------------
-     * | RETURN EMPLOYEE
-     * |--------------------------------------------------------------------------
-     */
 
         return response()->json([
             'data' => $employee,
         ]);
     }
-    /*
-    |--------------------------------------------------------------------------
-    | DISPLAY A LISTING OF EMPLOYEES
-    |--------------------------------------------------------------------------
-    */
 
+    /**
+     * Display a listing of employees.
+     */
     public function index(Request $request): JsonResponse
     {
-        /*
-    |--------------------------------------------------------------------------
-    | QUERY
-    |--------------------------------------------------------------------------
-    */
-
         $query = Employee::query()
-            ->with([
-                'section.division',
-            ]);
-
-        /*
-    |--------------------------------------------------------------------------
-    | SEARCH
-    |--------------------------------------------------------------------------
-    */
+            ->with(['section.division']);
 
         if ($request->filled('search')) {
-            $search = $request->string('search');
+            $search = $request->input('search');
 
             $query->where(function ($query) use ($search) {
                 $query
-                    ->where(
-                        'first_name',
-                        'like',
-                        "%{$search}%"
-                    )
-                    ->orWhere(
-                        'middle_name',
-                        'like',
-                        "%{$search}%"
-                    )
-                    ->orWhere(
-                        'last_name',
-                        'like',
-                        "%{$search}%"
-                    )
-                    ->orWhere(
-                        'email',
-                        'like',
-                        "%{$search}%"
-                    )
-                    ->orWhere(
-                        'contact_number',
-                        'like',
-                        "%{$search}%"
-                    );
+                    ->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('middle_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('contact_number', 'like', "%{$search}%");
             });
         }
 
-        /*
-    |--------------------------------------------------------------------------
-    | STATUS FILTER
-    |--------------------------------------------------------------------------
-    |
-    | Supported values:
-    |
-    | active
-    | retired
-    | resigned
-    |
-    */
-
         if ($request->filled('status')) {
-            $status = $request->input('status');
-
-            $query->where(
-                'status',
-                $status
-            );
+            $query->where('status', $request->input('status'));
         }
-
-        /*
-    |--------------------------------------------------------------------------
-    | DIVISION FILTER
-    |--------------------------------------------------------------------------
-    |
-    | Employees do not have a direct division_id.
-    |
-    | Division is obtained through:
-    |
-    | Employee
-    |     -> Section
-    |         -> Division
-    |
-    */
 
         if ($request->filled('division_ids')) {
             $query->whereHas(
@@ -220,12 +123,6 @@ class EmployeeController extends Controller
             );
         }
 
-        /*
-    |--------------------------------------------------------------------------
-    | SECTION FILTER
-    |--------------------------------------------------------------------------
-    */
-
         if ($request->filled('section_ids')) {
             $query->whereIn(
                 'section_id',
@@ -233,478 +130,247 @@ class EmployeeController extends Controller
             );
         }
 
-        /*
-    |--------------------------------------------------------------------------
-    | PAGINATION
-    |--------------------------------------------------------------------------
-    */
-
         $employees = $query
             ->latest()
-            ->paginate(
-                $request->integer('per_page', 15)
-            );
+            ->paginate($request->integer('per_page', 15));
 
-        /*
-    |--------------------------------------------------------------------------
-    | RETURN RESPONSE
-    |--------------------------------------------------------------------------
-    */
-
-        return response()->json(
-            $employees
-        );
+        return response()->json($employees);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | STORE A NEW EMPLOYEE
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Store a newly created employee.
+     */
     public function store(
-        Request $request
+        Request $request,
+        AuditLogService $auditLog
     ): JsonResponse {
-        /*
-        |--------------------------------------------------------------------------
-        | VALIDATE REQUEST
-        |--------------------------------------------------------------------------
-        */
-
         $validated = $request->validate([
-            /*
-            |--------------------------------------------------------------------------
-            | PERSONAL INFORMATION
-            |--------------------------------------------------------------------------
-            */
-
             'first_name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'middle_name' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'last_name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'date_birth' => [
                 'required',
                 'date',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | CONTACT INFORMATION
-            |--------------------------------------------------------------------------
-            */
-
             'email' => [
                 'required',
                 'email',
                 'max:255',
                 'unique:employees,email',
             ],
-
             'contact_number' => [
                 'required',
                 'string',
                 'max:20',
                 'unique:employees,contact_number',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | ORGANIZATION
-            |--------------------------------------------------------------------------
-            |
-            | An employee belongs directly to a section.
-            |
-            | The division is obtained through:
-            |
-            | Employee
-            |     -> Section
-            |         -> Division
-            |
-            */
-
             'section_id' => [
                 'required',
                 'integer',
                 'exists:sections,id',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | EMPLOYMENT STATUS
-            |--------------------------------------------------------------------------
-            |
-            | Status is optional during creation.
-            |
-            | If omitted, it defaults to active.
-            |
-            */
-
             'status' => [
                 'sometimes',
                 Rule::enum(EmployeeStatus::class),
             ],
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | GET AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
-
-        $authUserId = $request->attributes->get(
-            'auth_user_id'
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | VERIFY AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
+        $authUserId = $request->attributes->get('auth_user_id');
 
         if (!$authUserId) {
             return response()->json([
-                'message' =>
-                'Authenticated user could not be identified.',
+                'message' => 'Authenticated user could not be identified.',
             ], 401);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | DEFAULT EMPLOYEE STATUS
-        |--------------------------------------------------------------------------
-        */
+        $validated['status'] ??= EmployeeStatus::ACTIVE->value;
+        $validated['encoded_by'] = $authUserId;
+        $validated['updated_by'] = $authUserId;
 
-        $validated['status'] ??=
-            EmployeeStatus::ACTIVE->value;
+        // Create the employee inside a transaction.
+        $employee = DB::transaction(function () use ($validated) {
+            return Employee::create($validated);
+        });
 
-        /*
-        |--------------------------------------------------------------------------
-        | AUDIT INFORMATION
-        |--------------------------------------------------------------------------
-        |
-        | These UUIDs reference users from auth-fcv.
-        |
-        | encoded_by:
-        | The user who originally created the employee.
-        |
-        | updated_by:
-        | The user who most recently modified the employee.
-        |
-        */
+        $employee->load(['section.division']);
 
-        $validated['encoded_by'] =
-            $authUserId;
-
-        $validated['updated_by'] =
-            $authUserId;
-
-        /*
-        |--------------------------------------------------------------------------
-        | CREATE EMPLOYEE
-        |--------------------------------------------------------------------------
-        */
-
-        $employee = DB::transaction(
-            function () use ($validated) {
-                return Employee::create(
-                    $validated
-                );
-            }
+        // Audit only after the database transaction succeeds.
+        $auditLog->record(
+            $request,
+            'CREATE',
+            'employee',
+            (string) $employee->getKey(),
+            'Created employee: '
+                . $employee->first_name . ' ' . $employee->last_name,
+            null,
+            $this->auditValues($employee)
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | LOAD RELATIONSHIPS
-        |--------------------------------------------------------------------------
-        */
-
-        $employee->load([
-            'section.division',
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | RETURN RESPONSE
-        |--------------------------------------------------------------------------
-        */
-
         return response()->json([
-            'message' =>
-            'Employee created successfully.',
-
-            'data' =>
-            $employee,
+            'message' => 'Employee created successfully.',
+            'data' => $employee,
         ], 201);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | DISPLAY THE SPECIFIED EMPLOYEE
-    |--------------------------------------------------------------------------
-    */
-
-    public function show(
-        Employee $employee
-    ): JsonResponse {
-        /*
-        |--------------------------------------------------------------------------
-        | LOAD RELATIONSHIPS
-        |--------------------------------------------------------------------------
-        */
-
-        $employee->load([
-            'section.division',
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | RETURN RESPONSE
-        |--------------------------------------------------------------------------
-        */
+    /**
+     * Display the specified employee.
+     */
+    public function show(Employee $employee): JsonResponse
+    {
+        $employee->load(['section.division']);
 
         return response()->json([
-            'data' =>
-            $employee,
+            'data' => $employee,
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE THE SPECIFIED EMPLOYEE
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Update the specified employee.
+     */
     public function update(
         Request $request,
-        Employee $employee
+        Employee $employee,
+        AuditLogService $auditLog
     ): JsonResponse {
-        /*
-        |--------------------------------------------------------------------------
-        | VALIDATE REQUEST
-        |--------------------------------------------------------------------------
-        */
-
         $validated = $request->validate([
-            /*
-            |--------------------------------------------------------------------------
-            | PERSONAL INFORMATION
-            |--------------------------------------------------------------------------
-            */
-
             'first_name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'middle_name' => [
                 'nullable',
                 'string',
                 'max:255',
             ],
-
             'last_name' => [
                 'required',
                 'string',
                 'max:255',
             ],
-
             'date_birth' => [
                 'required',
                 'date',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | CONTACT INFORMATION
-            |--------------------------------------------------------------------------
-            */
-
             'email' => [
                 'required',
                 'email',
                 'max:255',
-                Rule::unique(
-                    'employees',
-                    'email'
-                )->ignore(
-                    $employee->id
-                ),
+                Rule::unique('employees', 'email')
+                    ->ignore($employee->id),
             ],
-
             'contact_number' => [
                 'required',
                 'string',
                 'max:20',
-                Rule::unique(
-                    'employees',
-                    'contact_number'
-                )->ignore(
-                    $employee->id
-                ),
+                Rule::unique('employees', 'contact_number')
+                    ->ignore($employee->id),
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | ORGANIZATION
-            |--------------------------------------------------------------------------
-            */
-
             'section_id' => [
                 'required',
                 'integer',
                 'exists:sections,id',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | EMPLOYMENT STATUS
-            |--------------------------------------------------------------------------
-            */
-
             'status' => [
                 'required',
                 Rule::enum(EmployeeStatus::class),
             ],
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | GET AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
-
-        $authUserId = $request->attributes->get(
-            'auth_user_id'
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | VERIFY AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
+        $authUserId = $request->attributes->get('auth_user_id');
 
         if (!$authUserId) {
             return response()->json([
-                'message' =>
-                'Authenticated user could not be identified.',
+                'message' => 'Authenticated user could not be identified.',
             ], 401);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | AUDIT INFORMATION
-        |--------------------------------------------------------------------------
-        |
-        | encoded_by remains unchanged.
-        |
-        | updated_by records the Auth-FCV user who
-        | performed the update.
-        |
-        */
+        // Capture the original state before modifying the model.
+        $oldValues = $this->auditValues($employee);
 
-        $validated['updated_by'] =
-            $authUserId;
+        $validated['updated_by'] = $authUserId;
 
-        /*
-        |--------------------------------------------------------------------------
-        | UPDATE EMPLOYEE
-        |--------------------------------------------------------------------------
-        */
-
-        $employee->update(
+        // Commit the employee update before sending the audit event.
+        $employee = DB::transaction(function () use (
+            $employee,
             $validated
+        ) {
+            $employee->update($validated);
+
+            return $employee->fresh();
+        });
+
+        $employee->load(['section.division']);
+
+        $auditLog->record(
+            $request,
+            'UPDATE',
+            'employee',
+            (string) $employee->getKey(),
+            'Updated employee: '
+                . $employee->first_name . ' ' . $employee->last_name,
+            $oldValues,
+            $this->auditValues($employee)
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | LOAD RELATIONSHIPS
-        |--------------------------------------------------------------------------
-        */
-
-        $employee->load([
-            'section.division',
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | RETURN RESPONSE
-        |--------------------------------------------------------------------------
-        */
-
         return response()->json([
-            'message' =>
-            'Employee updated successfully.',
-
-            'data' =>
-            $employee,
+            'message' => 'Employee updated successfully.',
+            'data' => $employee,
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | REMOVE THE SPECIFIED EMPLOYEE
-    |--------------------------------------------------------------------------
-    */
-
+    /**
+     * Remove the specified employee.
+     */
     public function destroy(
         Request $request,
-        Employee $employee
+        Employee $employee,
+        AuditLogService $auditLog
     ): JsonResponse {
-        /*
-        |--------------------------------------------------------------------------
-        | GET AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
-
-        $authUserId = $request->attributes->get(
-            'auth_user_id'
-        );
-
-        /*
-        |--------------------------------------------------------------------------
-        | VERIFY AUTHENTICATED USER
-        |--------------------------------------------------------------------------
-        */
+        $authUserId = $request->attributes->get('auth_user_id');
 
         if (!$authUserId) {
             return response()->json([
-                'message' =>
-                'Authenticated user could not be identified.',
+                'message' => 'Authenticated user could not be identified.',
             ], 401);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | DELETE EMPLOYEE
-        |--------------------------------------------------------------------------
-        */
+        // Preserve the employee data before deletion.
+        $oldValues = $this->auditValues($employee);
+        $recordId = (string) $employee->getKey();
 
-        $employee->delete();
+        $employeeName = trim(
+            $employee->first_name . ' ' . $employee->last_name
+        );
 
-        /*
-        |--------------------------------------------------------------------------
-        | RETURN RESPONSE
-        |--------------------------------------------------------------------------
-        */
+        DB::transaction(function () use ($employee) {
+            $employee->delete();
+        });
+
+        $auditLog->record(
+            $request,
+            'DELETE',
+            'employee',
+            $recordId,
+            'Deleted employee: ' . $employeeName,
+            $oldValues,
+            null
+        );
 
         return response()->json([
-            'message' =>
-            'Employee deleted successfully.',
+            'message' => 'Employee deleted successfully.',
         ]);
     }
 }

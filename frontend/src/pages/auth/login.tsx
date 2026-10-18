@@ -19,6 +19,7 @@ import {
 } from "@mantine/core";
 import { AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
 import api from "@/lib/api/api";
+import { isAxiosError } from "axios";
 import ApiHealthCheck from "@/components/api-health-check";
 import { useAuth } from "@/lib/api/auth/use-auth";
 
@@ -62,26 +63,64 @@ export default function Login() {
     try {
       const response = await api.post("/api/auth/login", data);
 
-      const { token, user } = response.data;
+      const { token, user } = response.data ?? {};
 
+      // Stop if the backend did not return valid login data.
       if (!token || !user) {
-        throw new Error("The login response did not include a token and user.");
+        setServerError(
+          response.data?.message ||
+            "Login failed. The server did not return valid authentication data.",
+        );
+        return;
       }
+
+      // Save authentication data only after successful validation.
       localStorage.setItem("auth_user", JSON.stringify(user));
       localStorage.setItem("auth_token", token);
+
       window.dispatchEvent(new Event("auth-token-changed"));
 
-      // Immediately update the shared React authentication state.
+      // Update shared authentication state.
       setSession(user);
 
+      // Show the login notification on the dashboard.
       sessionStorage.setItem("show_login_notification", "1");
 
+      // Navigate only after successful authentication.
       navigate("/dashboard", { replace: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
       sessionStorage.removeItem("show_login_notification");
 
+      if (isAxiosError(error)) {
+        const responseData = error.response?.data;
+
+        // Display the actual Laravel validation error first.
+        const validationErrors = responseData?.errors;
+
+        const firstValidationError = validationErrors
+          ? Object.values(validationErrors)
+              .flat()
+              .find(
+                (message): message is string =>
+                  typeof message === "string" && message.length > 0,
+              )
+          : undefined;
+
+        setServerError(
+          firstValidationError ||
+            responseData?.message ||
+            (!error.response
+              ? "Unable to connect to the authentication service. Please try again."
+              : "Login failed. Please check your credentials and try again."),
+        );
+
+        return;
+      }
+
       setServerError(
-        error.response?.data?.message || error.message || "Unable to log in.",
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred during login.",
       );
     }
   };

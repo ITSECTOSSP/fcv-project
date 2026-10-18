@@ -1,5 +1,5 @@
-// This hook fetches visitor statistics and recent visitor data from the API, manages loading and error states, and listens for real-time updates via a WebSocket channel. It provides a refresh function to manually reload the data when needed.
 import { echo } from "@/echo";
+import api from "@/lib/api/api";
 import { useCallback, useEffect, useState } from "react";
 
 export interface VisitorSummary {
@@ -39,51 +39,43 @@ export function useVisitorStatistics() {
     try {
       setError(null);
 
-      const [statisticsResponse, visitorsResponse] =
-        await Promise.all([
-          fetch("/api/auth/visitors/statistics", {
-            credentials: "include",
-          }),
-          fetch("/api/auth/visitors/recent?limit=10", {
-            credentials: "include",
-          }),
-        ]);
+      const [statisticsResponse, visitorsResponse] = await Promise.all([
+        api.get<VisitorStatisticsResponse>("/api/auth/visitors/statistics"),
+        api.get<Visitor[]>("/api/auth/visitors/recent", {
+          params: { limit: 10 },
+        }),
+      ]);
 
-      if (!statisticsResponse.ok) {
-        throw new Error("Failed to fetch visitor statistics");
-      }
-
-      if (!visitorsResponse.ok) {
-        throw new Error("Failed to fetch recent visitors");
-      }
-
-      const statisticsData: VisitorStatisticsResponse =
-        await statisticsResponse.json();
-
-      const visitorsData: Visitor[] =
-        await visitorsResponse.json();
-
-      setStats(statisticsData.summary);
-      setVisitors(visitorsData);
+      setStats(statisticsResponse.data.summary);
+      setVisitors(visitorsResponse.data);
     } catch (error) {
       console.error("Failed to load visitor data:", error);
 
       setError(
         error instanceof Error
           ? error.message
-          : "Unable to load visitor statistics."
+          : "Unable to load visitor statistics.",
       );
     }
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+
     const loadInitialData = async () => {
       setLoading(true);
       await refresh();
-      setLoading(false);
+
+      if (mounted) {
+        setLoading(false);
+      }
     };
 
-    loadInitialData();
+    void loadInitialData();
+
+    return () => {
+      mounted = false;
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -91,7 +83,7 @@ export function useVisitorStatistics() {
 
     channel.listen(".visitor.created", () => {
       console.log("New visitor detected.");
-      refresh();
+      void refresh();
     });
 
     return () => {

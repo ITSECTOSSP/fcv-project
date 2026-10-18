@@ -245,7 +245,8 @@ export default function UserForm({
         /^\S+@\S+\.\S+$/.test(value) ? null : "Enter a valid email address.",
 
       password: (value) => {
-        if (isEdit) {
+        // Password is optional when editing a user.
+        if (isEdit && !value) {
           return null;
         }
 
@@ -255,7 +256,12 @@ export default function UserForm({
       },
 
       password_confirmation: (value, values) => {
-        if (isEdit) {
+        // Confirmation is optional when no new password is entered.
+        if (isEdit && !values.password) {
+          return null;
+        }
+
+        if (!values.password) {
           return null;
         }
 
@@ -369,6 +375,8 @@ export default function UserForm({
   */
 
   const handleSubmit = async (values: UserFormValues) => {
+    const newPassword = values.password.trim();
+
     if (isEdit) {
       const response = await updateUser({
         name: values.name.trim(),
@@ -376,6 +384,13 @@ export default function UserForm({
         role_id: values.role_id,
         employee_id: values.employee_id,
         status: values.status,
+
+        ...(newPassword
+          ? {
+              password: newPassword,
+              password_confirmation: values.password_confirmation,
+            }
+          : {}),
       });
 
       if (response) {
@@ -594,32 +609,48 @@ export default function UserForm({
 
               {/*
               |--------------------------------------------------------------------------
-              | PASSWORD - CREATE ONLY
+              | PASSWORD
               |--------------------------------------------------------------------------
               */}
 
-              {!isEdit && (
-                <Group grow align="flex-start" gap="md">
-                  <PasswordInput
-                    label="Password"
-                    placeholder="Enter password"
-                    description="Minimum of 8 characters"
-                    required
-                    size="md"
-                    disabled={loading}
-                    {...form.getInputProps("password")}
-                  />
+              <Stack gap="sm">
+                <Text fw={600} size="lg" c="var(--text-h)">
+                  {isEdit ? "Change Password" : "Set Password"}
+                </Text>
 
-                  <PasswordInput
-                    label="Confirm Password"
-                    placeholder="Re-enter password"
-                    required
-                    size="md"
-                    disabled={loading}
-                    {...form.getInputProps("password_confirmation")}
-                  />
-                </Group>
-              )}
+                <Text size="sm" c="var(--text-muted)">
+                  {isEdit
+                    ? "Leave both fields blank to keep the current password."
+                    : "Set a password for the new system account."}
+                </Text>
+              </Stack>
+
+              <Group grow align="flex-start" gap="md">
+                <PasswordInput
+                  label={isEdit ? "New Password" : "Password"}
+                  placeholder={
+                    isEdit ? "Enter new password (optional)" : "Enter password"
+                  }
+                  description="Minimum of 8 characters"
+                  required={!isEdit}
+                  size="md"
+                  disabled={loading}
+                  autoComplete="new-password"
+                  {...form.getInputProps("password")}
+                />
+
+                <PasswordInput
+                  label="Confirm Password"
+                  placeholder={
+                    isEdit ? "Confirm new password" : "Re-enter password"
+                  }
+                  required={!isEdit}
+                  size="md"
+                  disabled={loading}
+                  autoComplete="new-password"
+                  {...form.getInputProps("password_confirmation")}
+                />
+              </Group>
 
               <Divider />
 

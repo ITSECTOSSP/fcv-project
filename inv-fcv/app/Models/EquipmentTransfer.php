@@ -36,7 +36,7 @@ class EquipmentTransfer extends Model
         */
 
         'quantity',
-        'transferred_at',
+        'transfer_date',
         'remarks',
 
         /*

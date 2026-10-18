@@ -1,11 +1,4 @@
-  import {
-  Button,
-  Group,
-  Paper,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
 
 import { Plus } from "lucide-react";
 
@@ -80,21 +73,16 @@ export default function UserManagement() {
 
       <Group justify="space-between">
         <div>
-          <Title order={2}>
-            User Management
-          </Title>
+          <Title order={2}>User Management</Title>
 
           <Text size="sm" c="dimmed">
-            Manage system users, roles, permissions,
-            and account status.
+            Manage system users, roles, permissions, and account status.
           </Text>
         </div>
 
         <Button
           leftSection={<Plus size={16} />}
-          onClick={() =>
-            navigate("/admin/create-user")
-          }
+          onClick={() => navigate("/admin/create-user")}
         >
           Add User
         </Button>
@@ -104,11 +92,7 @@ export default function UserManagement() {
       {/* FILTERS */}
       {/* -------------------------------------------------------------------------- */}
 
-      <Paper
-        withBorder
-        p="md"
-        radius="md"
-      >
+      <Paper withBorder p="md" radius="md">
         <UserFilters
           search={search}
           status={status}
@@ -118,9 +102,7 @@ export default function UserManagement() {
           permissions={permissions}
           loading={loadingFilters}
           onSearchChange={setSearch}
-          onStatusChange={(value) =>
-            setStatus(value ?? "")
-          }
+          onStatusChange={(value) => setStatus(value ?? "")}
           onRoleChange={setRoleIds}
           onPermissionChange={setRoleIds}
           onClear={handleClear}
@@ -135,14 +117,9 @@ export default function UserManagement() {
         users={users}
         loading={loading}
         error={error}
-        onEdit={(user) =>
-          navigate(`/admin/edit-user/${user.id}`)
-        }
-        onPermissions={(user) =>
-          navigate(
-            `/admin/user-permissions/${user.id}`,
-          )
-        }
+        onView={(user) => navigate(`/admin/view-user/${user.id}`)}
+        onEdit={(user) => navigate(`/admin/edit-user/${user.id}`)}
+        onPermissions={(user) => navigate(`/admin/user-permissions/${user.id}`)}
         onRefresh={fetchUsers}
       />
     </Stack>

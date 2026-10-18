@@ -26,8 +26,8 @@ export default function EditUser() {
   };
 
   return (
-    <Container size="lg" py="xl">
-      <Stack gap="lg">
+    
+      <Stack gap="xl">
         {/* SHARED APP LAYOUT PAGE TITLE */}
         <PageTitle title={pageTitle} />
 
@@ -60,6 +60,5 @@ export default function EditUser() {
           onCancel={handleCancel}
         />
       </Stack>
-    </Container>
   );
 }

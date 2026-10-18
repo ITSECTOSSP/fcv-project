@@ -113,14 +113,13 @@ export default function PublicLayout() {
       {/* =====================================================
           FLOATING CONTROLS
       ===================================================== */}
-
       <Box
-        style={{
-          position: "fixed",
-          right: 24,
-          bottom: 24,
-          zIndex: 1000,
-        }}
+        className="
+    fixed
+    bottom-3 right-3
+    z-[40]
+    sm:bottom-6 sm:right-6
+  "
       >
         <Stack
           gap={0}
@@ -146,11 +145,7 @@ export default function PublicLayout() {
 
             {showScrollTop && (
               <>
-                <Box
-                  h={24}
-                  w={1}
-                  className="bg-[var(--border)]"
-                />
+                <Box h={24} w={1} className="bg-[var(--border)]" />
 
                 <Button
                   onClick={scrollToTop}

@@ -114,6 +114,33 @@ export default function EmployeeForm({
     },
   });
 
+  useEffect(() => {
+    if (!initialValues) return;
+
+    const values: EmployeePayload = {
+      first_name: initialValues.first_name ?? "",
+      middle_name: initialValues.middle_name ?? null,
+      last_name: initialValues.last_name ?? "",
+      date_birth: initialValues.date_birth ?? "",
+      email: initialValues.email ?? "",
+      contact_number: initialValues.contact_number ?? "",
+      section_id: Number(initialValues.section_id) || 0,
+      status: initialValues.status ?? "active",
+    };
+
+    form.setValues(values);
+    form.resetDirty(values);
+  }, [
+    initialValues?.first_name,
+    initialValues?.middle_name,
+    initialValues?.last_name,
+    initialValues?.date_birth,
+    initialValues?.email,
+    initialValues?.contact_number,
+    initialValues?.section_id,
+    initialValues?.status,
+  ]);
+
   /*
    * |--------------------------------------------------------------------------
    * | LOAD SECTIONS

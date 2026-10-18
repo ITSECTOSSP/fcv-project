@@ -21,6 +21,7 @@ services:
         config:
           origins:
             - http://localhost:5173
+            - http://localhost:8088
           methods:
             - GET
             - POST
@@ -55,7 +56,8 @@ services:
       - name: cors
         config:
           origins:
-            - "http://localhost:5173"
+            - http://localhost:5173
+            - http://localhost:8088
           methods:
             - GET
             - POST
@@ -91,6 +93,7 @@ services:
         config:
           origins:
             - http://localhost:5173
+            - http://localhost:8088
           methods:
             - GET
             - POST
@@ -128,6 +131,7 @@ services:
         config:
           origins:
             - http://localhost:5173
+            - http://localhost:8088
           methods:
             - GET
             - POST
@@ -165,6 +169,7 @@ services:
         config:
           origins:
             - http://localhost:5173
+            - http://localhost:8088
           methods:
             - GET
             - POST

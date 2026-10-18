@@ -180,7 +180,7 @@ export interface TransferEquipmentData {
   /**
    * Required date of the transfer.
    */
-  transferred_at: string;
+  transfer_date: string;
 
   remarks?: string | null;
 }
@@ -211,7 +211,7 @@ export interface EquipmentTransfer {
 
   quantity: number;
 
-  transferred_at: string;
+  transfer_date: string;
 
   remarks: string | null;
 
